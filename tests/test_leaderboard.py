@@ -3,7 +3,7 @@ Tests for leaderboard calculations.
 """
 import pytest
 
-from leaderboard import (
+from golfzon_ocr.services import (
     calculate_weekly_standings, calculate_cumulative_standings,
     get_week_by_week_breakdown, get_leaderboard_summary
 )
@@ -11,7 +11,7 @@ from leaderboard import (
 
 def test_calculate_weekly_standings(db_session, sample_league, sample_teams, sample_players):
     """Test calculating weekly standings."""
-    from database import create_weekly_score
+    from golfzon_ocr.db import create_weekly_score
     from datetime import datetime
     
     # Create scores for week 1
@@ -54,7 +54,7 @@ def test_calculate_weekly_standings(db_session, sample_league, sample_teams, sam
 
 def test_calculate_cumulative_standings(db_session, sample_league, sample_teams, sample_players):
     """Test calculating cumulative standings."""
-    from database import create_weekly_score
+    from golfzon_ocr.db import create_weekly_score
     from datetime import datetime
     
     # Create scores for multiple weeks

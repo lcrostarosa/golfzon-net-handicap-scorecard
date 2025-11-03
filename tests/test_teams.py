@@ -3,7 +3,7 @@ Tests for team management functions.
 """
 import pytest
 
-from teams import (
+from golfzon_ocr.services import (
     create_team_with_players, add_player_to_team, move_player_to_team,
     get_team_roster, match_ocr_players_to_existing, get_team_summary
 )

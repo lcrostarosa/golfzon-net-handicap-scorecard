@@ -30,6 +30,23 @@ A Python + Streamlit application that extracts player data from Golfzon-style go
 - **Cumulative Standings**: Track overall league performance across all weeks
 - **Mid-Season Entry**: Add scores for any week number, perfect for joining leagues mid-season
 
+## Screenshots
+
+### Submit Scores Page
+The main interface for uploading scorecard images and configuring scoring options.
+
+![Submit Scores](screenshots/IMG_6889.png)
+
+### Scorecard Results
+After uploading a scorecard, the OCR extracts player data and displays results with calculated net scores and winner.
+
+![Scorecard Results](screenshots/IMG_9695.png)
+
+### Team Management
+Create and manage teams within your league, assign players to teams, and view team rosters.
+
+![Team Management](screenshots/IMG_2870.png)
+
 ## Installation
 
 ### Prerequisites

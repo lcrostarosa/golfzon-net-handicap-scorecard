@@ -6,11 +6,11 @@ import io
 from typing import List, Dict
 from sqlalchemy.orm import Session
 
-from database import (
+from ..db import (
     get_league, list_teams, list_players, get_all_weeks,
     get_scores_by_week
 )
-from leaderboard import calculate_weekly_standings, calculate_cumulative_standings
+from ..services.leaderboard import calculate_weekly_standings, calculate_cumulative_standings
 
 
 def export_full_league_data(db: Session, league_id: int) -> str:

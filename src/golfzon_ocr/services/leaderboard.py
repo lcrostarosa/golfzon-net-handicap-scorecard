@@ -4,12 +4,12 @@ Leaderboard calculation and display functions.
 from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 
-from database import (
+from ..db import (
     get_league, list_teams, get_all_weeks,
     get_top_two_scores_per_team, calculate_team_score_for_week,
     get_scores_by_week
 )
-from models import Team
+from ..models import Team
 
 
 def calculate_weekly_standings(db: Session, league_id: int, week_number: int) -> List[Dict]:

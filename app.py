@@ -6,20 +6,16 @@ from PIL import Image
 import pandas as pd
 from datetime import datetime
 
-from ocr import extract_text
-from parser import parse_players
-from calculator import calculate_net_scores, recalculate_net_scores
-from database import (
+from golfzon_ocr.processing import extract_text, parse_players, calculate_net_scores, recalculate_net_scores
+from golfzon_ocr.db import (
     get_db_context, create_league, get_league, list_leagues,
     get_league_by_name, list_teams, create_team,
     create_weekly_score, get_player_scores_by_week, get_all_weeks,
     get_top_two_scores_per_team, get_scores_by_week
 )
-from teams import match_ocr_players_to_existing, add_player_to_team
-from teams import get_team_roster
-from leaderboard import get_leaderboard_summary, calculate_weekly_standings
-from export import export_full_league_data, export_weekly_summary
-from export import export_team_roster
+from golfzon_ocr.services import match_ocr_players_to_existing, add_player_to_team, get_team_roster
+from golfzon_ocr.services import get_leaderboard_summary, calculate_weekly_standings
+from golfzon_ocr.export import export_full_league_data, export_weekly_summary, export_team_roster
 
 
 # Page configuration

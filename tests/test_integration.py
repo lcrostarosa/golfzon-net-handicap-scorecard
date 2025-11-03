@@ -4,9 +4,9 @@ Integration tests for the full application flow.
 import pytest
 from datetime import datetime
 
-from database import create_league, create_team, create_player, create_weekly_score
-from teams import match_ocr_players_to_existing
-from leaderboard import calculate_weekly_standings, calculate_cumulative_standings
+from golfzon_ocr.db import create_league, create_team, create_player, create_weekly_score
+from golfzon_ocr.services import match_ocr_players_to_existing
+from golfzon_ocr.services import calculate_weekly_standings, calculate_cumulative_standings
 
 
 def test_full_flow_ocr_to_leaderboard(db_session):

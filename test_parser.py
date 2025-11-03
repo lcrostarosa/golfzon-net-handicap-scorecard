@@ -2,8 +2,7 @@
 Test file for golfzon-ocr parser and calculator.
 """
 import pytest
-from parser import parse_players
-from calculator import calculate_net_scores, recalculate_net_scores
+from golfzon_ocr.processing import parse_players, calculate_net_scores, recalculate_net_scores
 
 
 def test_parse_players_complete_data():

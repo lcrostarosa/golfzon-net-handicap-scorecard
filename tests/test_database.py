@@ -4,7 +4,7 @@ Tests for database operations.
 import pytest
 from datetime import datetime
 
-from database import (
+from golfzon_ocr.db import (
     create_league, get_league, get_league_by_name, list_leagues, delete_league,
     create_team, get_team, list_teams, delete_team,
     create_player, get_player, find_player_by_name, list_players, delete_player,
@@ -131,7 +131,7 @@ def test_get_scores_by_week(db_session, sample_league, sample_scores):
 
 def test_get_top_two_scores_per_team(db_session, sample_league, sample_teams, sample_players):
     """Test getting top 2 scores per team."""
-    from database import create_weekly_score
+        from golfzon_ocr.db import create_weekly_score
     from datetime import datetime
     
     # Create scores for week 1
@@ -162,7 +162,7 @@ def test_get_top_two_scores_per_team(db_session, sample_league, sample_teams, sa
 
 def test_calculate_team_score_for_week(db_session, sample_league, sample_teams, sample_players):
     """Test calculating team score for a week."""
-    from database import create_weekly_score
+        from golfzon_ocr.db import create_weekly_score
     from datetime import datetime
     
     team = sample_teams[0]

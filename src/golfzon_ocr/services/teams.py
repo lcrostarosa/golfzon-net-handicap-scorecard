@@ -4,12 +4,12 @@ Team management functions.
 from typing import List, Optional, Dict
 from sqlalchemy.orm import Session
 
-from database import (
+from ..db import (
     create_team, get_team, list_teams, delete_team,
     create_player, get_player, find_player_by_name, list_players, delete_player,
     get_league
 )
-from models import Team, Player
+from ..models import Team, Player
 
 
 def create_team_with_players(db: Session, league_id: int, team_name: str, player_names: List[str]) -> Team:

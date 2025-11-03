@@ -273,3 +273,4 @@ def process_match(match, exclude_words, seen_names, players):
         
     except (ValueError, IndexError, TypeError):
         return False
+

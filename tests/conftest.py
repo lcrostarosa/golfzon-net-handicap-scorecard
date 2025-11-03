@@ -5,8 +5,8 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from models import Base
-from database import DATABASE_URL
+from golfzon_ocr.models import Base
+from golfzon_ocr.db import DATABASE_URL
 
 
 @pytest.fixture(scope="function")
@@ -29,14 +29,14 @@ def db_session():
 @pytest.fixture
 def sample_league(db_session):
     """Create a sample league for testing."""
-    from database import create_league
+    from golfzon_ocr.db import create_league
     return create_league(db_session, "Test League")
 
 
 @pytest.fixture
 def sample_teams(db_session, sample_league):
     """Create sample teams for testing."""
-    from database import create_team
+    from golfzon_ocr.db import create_team
     team1 = create_team(db_session, sample_league.id, "Team A")
     team2 = create_team(db_session, sample_league.id, "Team B")
     return [team1, team2]
@@ -45,7 +45,7 @@ def sample_teams(db_session, sample_league):
 @pytest.fixture
 def sample_players(db_session, sample_teams):
     """Create sample players for testing."""
-    from database import create_player
+    from golfzon_ocr.db import create_player
     players = []
     for team in sample_teams:
         players.append(create_player(db_session, team.id, f"Player {team.name[-1]}a"))
@@ -56,7 +56,7 @@ def sample_players(db_session, sample_teams):
 @pytest.fixture
 def sample_scores(db_session, sample_league, sample_players):
     """Create sample weekly scores for testing."""
-    from database import create_weekly_score
+    from golfzon_ocr.db import create_weekly_score
     from datetime import datetime
     
     scores = []

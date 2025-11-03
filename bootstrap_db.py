@@ -8,8 +8,8 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from database import get_engine
-from models import Base
+from golfzon_ocr.db import get_engine
+from golfzon_ocr.models import Base
 
 
 def bootstrap_database():

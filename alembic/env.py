@@ -6,7 +6,7 @@ from sqlalchemy import pool
 from alembic import context
 
 # Import models and Base
-from models import Base
+from golfzon_ocr.models import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

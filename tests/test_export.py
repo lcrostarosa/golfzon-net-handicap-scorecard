@@ -4,7 +4,7 @@ Tests for CSV export functions.
 import csv
 import io
 
-from export import export_full_league_data, export_weekly_summary, export_team_roster
+from golfzon_ocr.export import export_full_league_data, export_weekly_summary, export_team_roster
 
 
 def test_export_full_league_data(db_session, sample_league, sample_teams, sample_players, sample_scores):

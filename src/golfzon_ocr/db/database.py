@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from contextlib import contextmanager
 from datetime import datetime
 
-from models import Base, League, Team, Player, WeeklyScore
+from ..models import Base, League, Team, Player, WeeklyScore
 
 # Database file path
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///golfzon_league.db")
