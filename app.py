@@ -1,18 +1,29 @@
 """
-Streamlit application for Golfzon scorecard OCR and net score calculation.
+Streamlit application for Golfzon scorecard OCR and league management.
 """
 import streamlit as st
 from PIL import Image
 import pandas as pd
+from datetime import datetime
 
 from ocr import extract_text
 from parser import parse_players
 from calculator import calculate_net_scores, recalculate_net_scores
+from database import (
+    get_db_context, create_league, get_league, list_leagues,
+    get_league_by_name, list_teams, create_team,
+    create_weekly_score, get_player_scores_by_week, get_all_weeks
+)
+from teams import match_ocr_players_to_existing, add_player_to_team
+from teams import get_team_roster
+from leaderboard import get_leaderboard_summary, calculate_weekly_standings
+from export import export_full_league_data, export_weekly_summary
+from export import export_team_roster
 
 
 # Page configuration
 st.set_page_config(
-    page_title="Golfzon Scorecard OCR",
+    page_title="Golfzon League Manager",
     page_icon="⛳",
     layout="wide"
 )
@@ -21,171 +32,187 @@ st.set_page_config(
 st.markdown("""
     <style>
     .winner-banner {
-        background-color: #FFD700;
+        background-color: #D4EDDA;
+        color: #155724;
         padding: 20px;
         border-radius: 10px;
         text-align: center;
         font-size: 24px;
         font-weight: bold;
         margin: 20px 0;
+        border: 1px solid #C3E6CB;
     }
     </style>
 """, unsafe_allow_html=True)
 
 
-def main():
-    st.title("⛳ Golfzon Scorecard OCR")
-    st.markdown("Upload a screenshot of your Golfzon scorecard to calculate net scores based on handicaps.")
-    
-    # Sidebar for settings
-    with st.sidebar:
-        st.header("Settings")
-        num_holes = st.radio(
-            "Number of holes:",
-            [9, 18],
-            index=0,
-            help="Select 9-hole or 18-hole round"
-        )
-        
-        # Auto-calculate strokes toggle
-        auto_calculate_strokes = st.checkbox(
-            "Auto-calculate strokes from handicap",
-            value=True,
-            help="When enabled, strokes are calculated from handicap. When disabled, you can manually edit strokes."
-        )
-        
-        st.markdown("---")
-        st.markdown("### How it works:")
-        st.markdown("""
-        1. Upload a screenshot of your scorecard
-        2. OCR extracts player data
-        3. Net scores are calculated using:
-           - **9-hole**: strokes = handicap / 2
-           - **18-hole**: strokes = handicap
-        4. Results sorted by net score (lowest wins)
-        5. Edit values directly in the table to recalculate
-        """)
-    
-    # Initialize session state
+def initialize_session_state():
+    """Initialize session state variables."""
+    if 'selected_league_id' not in st.session_state:
+        st.session_state.selected_league_id = None
     if 'original_results' not in st.session_state:
         st.session_state.original_results = None
     if 'current_results' not in st.session_state:
         st.session_state.current_results = None
     if 'current_image_id' not in st.session_state:
         st.session_state.current_image_id = None
-    
-    # File uploader
-    uploaded_file = st.file_uploader(
-        "Choose an image file",
-        type=['jpg', 'jpeg', 'png'],
-        help="Upload a screenshot of your Golfzon scorecard"
-    )
-    
-    # Reset session state when new file is uploaded
-    if uploaded_file is not None:
-        current_file_id = id(uploaded_file)
-        if st.session_state.current_image_id != current_file_id:
-            st.session_state.current_image_id = current_file_id
-            st.session_state.original_results = None
-            st.session_state.current_results = None
-    
-    if uploaded_file is not None:
-        # Display uploaded image
-        image = Image.open(uploaded_file)
-        st.image(image, caption="Uploaded Scorecard", use_container_width=True)
+
+
+def league_selection_sidebar():
+    """League selection sidebar."""
+    with st.sidebar:
+        st.header("🏆 League Selection")
         
-        # Process the image
-        with st.spinner("Processing image with OCR..."):
-            try:
-                # Extract text using OCR
-                ocr_text = extract_text(image)
+        with get_db_context() as db:
+            leagues = list_leagues(db)
+            league_names = [league.name for league in leagues]
+            
+            if league_names:
+                selected_league_name = st.selectbox(
+                    "Select League",
+                    league_names,
+                    index=0 if st.session_state.selected_league_id is None else None
+                )
                 
-                # Also get backup OCR with PSM 11 for missing handicaps
-                try:
-                    import pytesseract
-                    import cv2
-                    import numpy as np
-                    img_array = np.array(image)
-                    if len(img_array.shape) == 3:
-                        img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
-                    gray = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
+                selected_league = next(
+                    (league for league in leagues
+                     if league.name == selected_league_name),
+                    None
+                )
+                if selected_league:
+                    st.session_state.selected_league_id = selected_league.id
+                    st.info(f"Selected: **{selected_league.name}**")
+            else:
+                st.info("No leagues yet. Create one below!")
+            
+            st.markdown("---")
+            st.subheader("Create New League")
+            new_league_name = st.text_input("League Name", key="new_league_input")
+            if st.button("Create League", type="primary"):
+                if new_league_name.strip():
                     try:
-                        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-                        enhanced = clahe.apply(gray)
-                    except:
-                        enhanced = gray
-                    backup_ocr_text = pytesseract.image_to_string(enhanced, config=r'--oem 3 --psm 11')
-                except:
-                    backup_ocr_text = None
-                
-                # Show raw OCR text in expandable section
-                with st.expander("Raw OCR Text", expanded=False):
-                    st.text(ocr_text)
-                
-                # Parse player data (with backup OCR for missing handicaps)
-                players = parse_players(ocr_text, backup_ocr_text=backup_ocr_text if 'backup_ocr_text' in locals() else None)
-                
-                if not players:
-                    st.error("❌ No player data found in the image. Please check:")
-                    st.markdown("""
-                    - Ensure the image is clear and readable
-                    - Verify the scorecard format matches Golfzon style
-                    - Check that player names, scores, and handicaps are visible
-                    """)
-                    st.text("OCR Output:")
-                    st.text(ocr_text)
+                        # Check if league already exists
+                        existing = get_league_by_name(db, new_league_name.strip())
+                        if existing:
+                            st.error(f"League '{new_league_name}' already exists!")
+                        else:
+                            new_league = create_league(db, new_league_name.strip())
+                            st.session_state.selected_league_id = new_league.id
+                            st.success(f"Created league '{new_league.name}'!")
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"Error creating league: {e}")
                 else:
-                    # Calculate net scores (initial calculation from OCR)
+                    st.warning("Please enter a league name")
+
+
+def page_score_submission():
+    """Score submission page with OCR."""
+    st.header("📸 Submit Scores")
+    
+    if not st.session_state.selected_league_id:
+        st.warning("Please select or create a league first!")
+        return
+    
+    with get_db_context() as db:
+        league = get_league(db, st.session_state.selected_league_id)
+        if not league:
+            st.error("Selected league not found!")
+            return
+        
+        st.info(f"Submitting scores for: **{league.name}**")
+        
+        # Week selection
+        col1, col2 = st.columns(2)
+        with col1:
+            week_number = st.number_input("Week Number", min_value=1, value=1, step=1)
+        with col2:
+            num_holes = st.radio("Number of holes:", [9, 18], index=0, horizontal=True)
+        
+        # Settings
+        auto_calculate_strokes = st.checkbox(
+            "Auto-calculate strokes from handicap",
+            value=True
+        )
+        
+        # File uploader
+        uploaded_file = st.file_uploader(
+            "Choose an image file",
+            type=['jpg', 'jpeg', 'png'],
+            help="Upload a screenshot of your Golfzon scorecard"
+        )
+        
+        # Reset session state when new file is uploaded
+        if uploaded_file is not None:
+            current_file_id = id(uploaded_file)
+            if st.session_state.current_image_id != current_file_id:
+                st.session_state.current_image_id = current_file_id
+                st.session_state.original_results = None
+                st.session_state.current_results = None
+        
+        if uploaded_file is not None:
+            # Display uploaded image
+            image = Image.open(uploaded_file)
+            st.image(image, caption="Uploaded Scorecard", use_container_width=True)
+            
+            # Process the image
+            with st.spinner("Processing image with OCR..."):
+                try:
+                    # Extract text using OCR
+                    ocr_text = extract_text(image)
+                    
+                    # Backup OCR
+                    try:
+                        import pytesseract
+                        import cv2
+                        import numpy as np
+                        img_array = np.array(image)
+                        if len(img_array.shape) == 3:
+                            img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+                        gray = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
+                        try:
+                            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                            enhanced = clahe.apply(gray)
+                        except:
+                            enhanced = gray
+                        backup_ocr_text = pytesseract.image_to_string(enhanced, config=r'--oem 3 --psm 11')
+                    except:
+                        backup_ocr_text = None
+                    
+                    # Show raw OCR text
+                    with st.expander("Raw OCR Text", expanded=False):
+                        st.text(ocr_text)
+                    
+                    # Parse player data
+                    players = parse_players(ocr_text, backup_ocr_text=backup_ocr_text if 'backup_ocr_text' in locals() else None)
+                    
+                    if not players:
+                        st.error("❌ No player data found in the image.")
+                        return
+                    
+                    # Calculate net scores
                     if st.session_state.original_results is None:
                         results = calculate_net_scores(players, num_holes)
                         st.session_state.original_results = results
                         st.session_state.current_results = results
                     else:
-                        # Use existing results from session state
                         results = st.session_state.current_results
                     
                     # Display results
                     st.header("📊 Results")
                     
-                    # Create DataFrame for display from current results
                     df = pd.DataFrame(results)
-                    
-                    # Reorder columns for better display
                     df_display = df[['name', 'gross_score', 'handicap', 'strokes_given', 'net_score']].copy()
                     df_display.columns = ['Player', 'Gross Score', 'Handicap (G-HCP)', 'Strokes Given', 'Net Score']
                     
-                    # Configure data editor with appropriate column types
                     column_config = {
                         "Player": st.column_config.TextColumn("Player", disabled=True),
-                        "Gross Score": st.column_config.NumberColumn(
-                            "Gross Score",
-                            min_value=1,
-                            max_value=200,
-                            step=1
-                        ),
-                        "Handicap (G-HCP)": st.column_config.NumberColumn(
-                            "Handicap (G-HCP)",
-                            min_value=-50.0,
-                            max_value=50.0,
-                            step=0.1,
-                            format="%.1f"
-                        ),
-                        "Strokes Given": st.column_config.NumberColumn(
-                            "Strokes Given",
-                            min_value=-50.0,
-                            max_value=50.0,
-                            step=0.1,
-                            format="%.2f",
-                            disabled=auto_calculate_strokes
-                        ),
-                        "Net Score": st.column_config.NumberColumn(
-                            "Net Score",
-                            format="%.2f",
-                            disabled=True
-                        )
+                        "Gross Score": st.column_config.NumberColumn("Gross Score", min_value=1, max_value=200, step=1),
+                        "Handicap (G-HCP)": st.column_config.NumberColumn("Handicap (G-HCP)", min_value=-50.0, max_value=50.0, step=0.1, format="%.1f"),
+                        "Strokes Given": st.column_config.NumberColumn("Strokes Given", min_value=-50.0, max_value=50.0, step=0.1, format="%.2f", disabled=auto_calculate_strokes),
+                        "Net Score": st.column_config.NumberColumn("Net Score", format="%.2f", disabled=True)
                     }
                     
-                    # Display editable table (key includes settings to reset when they change)
                     edited_df = st.data_editor(
                         df_display,
                         column_config=column_config,
@@ -194,7 +221,7 @@ def main():
                         key=f"results_editor_{num_holes}_{auto_calculate_strokes}"
                     )
                     
-                    # Convert edited dataframe back to results format
+                    # Convert back to results format
                     edited_results = []
                     for _, row in edited_df.iterrows():
                         edited_results.append({
@@ -204,17 +231,13 @@ def main():
                             "strokes_given": float(row["Strokes Given"])
                         })
                     
-                    # Recalculate net scores with edited values (handles auto-calculate toggle)
+                    # Recalculate
                     recalculated_results = recalculate_net_scores(
                         edited_results,
                         num_holes,
                         auto_calculate_strokes=auto_calculate_strokes
                     )
-                    
-                    # Update session state with recalculated results
                     st.session_state.current_results = recalculated_results
-                    
-                    # Use recalculated results for winner and CSV export
                     results = recalculated_results
                     
                     # Display winner
@@ -226,21 +249,323 @@ def main():
                             unsafe_allow_html=True
                         )
                     
-                    # CSV export
-                    csv_df = pd.DataFrame(results)
-                    csv = csv_df.to_csv(index=False)
+                    # Save to database
+                    st.markdown("---")
+                    st.subheader("💾 Save Scores")
+                    
+                    # Match players to database
+                    matched_players = match_ocr_players_to_existing(db, players, st.session_state.selected_league_id)
+                    
+                    # Check if all players are matched
+                    unmatched = [m for m in matched_players if m['action'] == 'needs_team']
+                    if unmatched:
+                        st.warning(f"⚠️ {len(unmatched)} players need team assignment before saving.")
+                        st.write("Unmatched players:")
+                        for match in unmatched:
+                            st.write(f"- {match['ocr_data']['name']}")
+                        st.info("Please assign these players to teams in the Team Management page first.")
+                    else:
+                        # Show matching status
+                        with st.expander("Player Matching", expanded=False):
+                            for match in matched_players:
+                                status_icon = "✅" if match['action'] == 'matched' else "🆕"
+                                st.write(f"{status_icon} {match['ocr_data']['name']} → {match['player'].name} ({match['player'].team.name})")
+                        
+                        if st.button("Save Scores to Database", type="primary"):
+                            saved_count = 0
+                            error_count = 0
+                            
+                            # Create a mapping of player names to calculated results
+                            results_dict = {r['name']: r for r in results}
+                            
+                            for match in matched_players:
+                                player = match['player']
+                                ocr_data = match['ocr_data']
+                                
+                                # Find matching calculated result
+                                calculated_result = results_dict.get(ocr_data['name'])
+                                if not calculated_result:
+                                    # Try to find by matching player name
+                                    calculated_result = next(
+                                        (r for r in results
+                                         if r['name'].lower() == player.name.lower()),
+                                        None
+                                    )
+                                
+                                if not calculated_result:
+                                    st.warning(f"Could not find calculated result for {player.name}. Skipping.")
+                                    error_count += 1
+                                    continue
+                                
+                                # Check if score already exists for this week
+                                existing_score = get_player_scores_by_week(db, player.id, week_number)
+                                if existing_score:
+                                    st.warning(f"Score for {player.name} (Week {week_number}) already exists. Skipping.")
+                                    continue
+                                
+                                try:
+                                    create_weekly_score(
+                                        db,
+                                        player_id=player.id,
+                                        league_id=st.session_state.selected_league_id,
+                                        week_number=week_number,
+                                        date=datetime.now(),
+                                        gross_score=calculated_result['gross_score'],
+                                        handicap=calculated_result['handicap'],
+                                        strokes_given=calculated_result['strokes_given'],
+                                        net_score=calculated_result['net_score'],
+                                        num_holes=num_holes
+                                    )
+                                    saved_count += 1
+                                except Exception as e:
+                                    st.error(f"Error saving score for {player.name}: {e}")
+                                    error_count += 1
+                            
+                            if saved_count > 0:
+                                st.success(f"✅ Saved {saved_count} scores for Week {week_number}!")
+                            if error_count > 0:
+                                st.error(f"❌ Failed to save {error_count} scores.")
+                            
+                            st.rerun()
+                
+                except Exception as e:
+                    st.error(f"❌ Error processing image: {str(e)}")
+                    st.exception(e)
+
+
+def page_team_management():
+    """Team management page."""
+    st.header("👥 Team Management")
+    
+    if not st.session_state.selected_league_id:
+        st.warning("Please select or create a league first!")
+        return
+    
+    with get_db_context() as db:
+        league = get_league(db, st.session_state.selected_league_id)
+        if not league:
+            st.error("Selected league not found!")
+            return
+        
+        st.info(f"Managing teams for: **{league.name}**")
+        
+        # Create new team
+        st.subheader("Create New Team")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            new_team_name = st.text_input("Team Name", key="new_team_input")
+        with col2:
+            if st.button("Create Team", type="primary"):
+                if new_team_name.strip():
+                    try:
+                        create_team(db, st.session_state.selected_league_id, new_team_name.strip())
+                        st.success(f"Created team '{new_team_name}'!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error creating team: {e}")
+                else:
+                    st.warning("Please enter a team name")
+        
+        st.markdown("---")
+        
+        # List teams
+        teams = list_teams(db, league_id=st.session_state.selected_league_id)
+        
+        if not teams:
+            st.info("No teams yet. Create one above!")
+        else:
+            for team in teams:
+                with st.expander(f"🏌️ {team.name}", expanded=False):
+                    players = get_team_roster(db, team.id)
+                    
+                    st.write(f"**Players:** {len(players)}")
+                    if players:
+                        for player in players:
+                            st.write(f"- {player.name}")
+                    else:
+                        st.write("*(no players)*")
+                    
+                    # Add player
+                    st.markdown("---")
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        new_player_name = st.text_input(f"Add Player", key=f"player_input_{team.id}")
+                    with col2:
+                        if st.button("Add", key=f"add_player_{team.id}"):
+                            if new_player_name.strip():
+                                try:
+                                    add_player_to_team(db, team.id, new_player_name.strip())
+                                    st.success(f"Added {new_player_name} to {team.name}!")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error: {e}")
+                            else:
+                                st.warning("Please enter a player name")
+
+
+def page_leaderboard():
+    """Leaderboard page."""
+    st.header("📊 Leaderboard")
+    
+    if not st.session_state.selected_league_id:
+        st.warning("Please select or create a league first!")
+        return
+    
+    with get_db_context() as db:
+        league = get_league(db, st.session_state.selected_league_id)
+        if not league:
+            st.error("Selected league not found!")
+            return
+        
+        summary = get_leaderboard_summary(db, st.session_state.selected_league_id)
+        
+        if not summary['weeks']:
+            st.info("No scores yet. Submit scores in the Score Submission page!")
+            return
+        
+        # Week selector
+        selected_week = st.selectbox(
+            "View Week",
+            summary['weeks'],
+            index=len(summary['weeks']) - 1 if summary['weeks'] else 0
+        )
+        
+        # Current week standings
+        if selected_week:
+            st.subheader(f"Week {selected_week} Standings")
+            standings = calculate_weekly_standings(db, st.session_state.selected_league_id, selected_week)
+            
+            if standings:
+                standings_data = []
+                for rank, standing in enumerate(standings, 1):
+                    standings_data.append({
+                        'Rank': rank,
+                        'Team': standing['team_name'],
+                        'Score': standing['score'] if standing['score'] is not None else 'Incomplete',
+                        'Top Players': ', '.join([f"{s['player_name']} ({s['net_score']})" for s in standing['top_two_scores']])
+                    })
+                
+                df = pd.DataFrame(standings_data)
+                st.dataframe(df, use_container_width=True, hide_index=True)
+            else:
+                st.info("No scores for this week yet.")
+        
+        st.markdown("---")
+        
+        # Cumulative standings
+        st.subheader("Cumulative Standings")
+        cumulative = summary['cumulative_standings']
+        
+        if cumulative:
+            cumulative_data = []
+            for rank, standing in enumerate(cumulative, 1):
+                cumulative_data.append({
+                    'Rank': rank,
+                    'Team': standing['team_name'],
+                    'Total Score': f"{standing['total_score']:.2f}",
+                    'Weeks Played': standing['weeks_played'],
+                    'Average Score': f"{standing['average_score']:.2f}" if standing['average_score'] else 'N/A'
+                })
+            
+            df_cumulative = pd.DataFrame(cumulative_data)
+            st.dataframe(df_cumulative, use_container_width=True, hide_index=True)
+        else:
+            st.info("No cumulative standings yet.")
+
+
+def page_export():
+    """Export page."""
+    st.header("📥 Export Data")
+    
+    if not st.session_state.selected_league_id:
+        st.warning("Please select or create a league first!")
+        return
+    
+    with get_db_context() as db:
+        league = get_league(db, st.session_state.selected_league_id)
+        if not league:
+            st.error("Selected league not found!")
+            return
+        
+        st.info(f"Exporting data for: **{league.name}**")
+        
+        # Export options
+        export_type = st.radio(
+            "Export Type",
+            ["Full League Data", "Weekly Summary", "Team Rosters"],
+            horizontal=True
+        )
+        
+        if export_type == "Full League Data":
+            if st.button("Export Full League Data", type="primary"):
+                try:
+                    csv_data = export_full_league_data(db, st.session_state.selected_league_id)
                     st.download_button(
-                        label="📥 Download Results as CSV",
-                        data=csv,
-                        file_name="golf_scorecard_results.csv",
+                        label="📥 Download CSV",
+                        data=csv_data,
+                        file_name=f"{league.name}_full_export.csv",
                         mime="text/csv"
                     )
-                    
-            except Exception as e:
-                st.error(f"❌ Error processing image: {str(e)}")
-                st.exception(e)
+                except Exception as e:
+                    st.error(f"Error exporting: {e}")
+        
+        elif export_type == "Weekly Summary":
+            weeks = get_all_weeks(db, st.session_state.selected_league_id)
+            if weeks:
+                selected_week = st.selectbox("Select Week", weeks)
+                if st.button("Export Weekly Summary", type="primary"):
+                    try:
+                        csv_data = export_weekly_summary(db, st.session_state.selected_league_id, selected_week)
+                        st.download_button(
+                            label="📥 Download CSV",
+                            data=csv_data,
+                            file_name=f"{league.name}_week_{selected_week}.csv",
+                            mime="text/csv"
+                        )
+                    except Exception as e:
+                        st.error(f"Error exporting: {e}")
+            else:
+                st.info("No weeks with scores yet.")
+        
+        elif export_type == "Team Rosters":
+            if st.button("Export Team Rosters", type="primary"):
+                try:
+                    csv_data = export_team_roster(db, st.session_state.selected_league_id)
+                    st.download_button(
+                        label="📥 Download CSV",
+                        data=csv_data,
+                        file_name=f"{league.name}_rosters.csv",
+                        mime="text/csv"
+                    )
+                except Exception as e:
+                    st.error(f"Error exporting: {e}")
+
+
+def main():
+    """Main application."""
+    initialize_session_state()
+    
+    st.title("⛳ Golfzon League Manager")
+    
+    # League selection sidebar
+    league_selection_sidebar()
+    
+    if not st.session_state.selected_league_id:
+        st.info("👈 Please select or create a league in the sidebar to get started!")
+        return
+    
+    # Page navigation
+    page = st.tabs(["📸 Submit Scores", "👥 Team Management", "📊 Leaderboard", "📥 Export"])
+    
+    with page[0]:
+        page_score_submission()
+    with page[1]:
+        page_team_management()
+    with page[2]:
+        page_leaderboard()
+    with page[3]:
+        page_export()
 
 
 if __name__ == "__main__":
     main()
-
