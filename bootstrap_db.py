@@ -55,7 +55,8 @@ def bootstrap_database():
     
     # Verify database exists and has tables
     engine = get_engine()
-    inspector = engine.dialect.inspector(engine)
+    from sqlalchemy import inspect
+    inspector = inspect(engine)
     tables = inspector.get_table_names()
     
     expected_tables = ['leagues', 'teams', 'players', 'weekly_scores', 'alembic_version']
