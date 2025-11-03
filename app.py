@@ -132,14 +132,16 @@ def page_score_submission():
         # Submission method selection
         submission_method = st.radio(
             "Submission Method:",
-            ["OCR from Image", "Manual Entry"],
+            ["OCR from Image", "Manual Entry", "Bulk Entry (Multiple Weeks)"],
             horizontal=True
         )
         
         if submission_method == "OCR from Image":
             _ocr_score_submission(db, league, week_number, num_holes)
-        else:
+        elif submission_method == "Manual Entry":
             _manual_score_submission(db, league, week_number, num_holes)
+        else:
+            _bulk_score_submission(db, league, num_holes)
 
 
 def _ocr_score_submission(db, league, week_number, num_holes):
@@ -488,6 +490,198 @@ def _manual_score_submission(db, league, week_number, num_holes):
                 if updated_count > 0:
                     msg.append(f"✅ Updated {updated_count} scores")
                 st.success(" ".join(msg) + f" for Week {week_number}!")
+            if error_count > 0:
+                st.error(f"❌ Failed to save {error_count} scores.")
+            
+            if saved_count > 0 or updated_count > 0:
+                st.rerun()
+
+
+def _bulk_score_submission(db, league, num_holes):
+    """Bulk score entry for multiple weeks."""
+    st.subheader("Bulk Score Entry - Multiple Weeks")
+    st.info("💡 Use this to enter scores for multiple weeks at once. Perfect for catching up an in-progress league!")
+    
+    # Get all teams and players
+    teams = list_teams(db, league_id=league.id)
+    
+    if not teams:
+        st.warning("No teams found. Please create teams first in the Team Management page.")
+        return
+    
+    # Week range selection
+    st.markdown("### Select Weeks")
+    col1, col2 = st.columns(2)
+    with col1:
+        start_week = st.number_input("Start Week", min_value=1, value=1, step=1)
+    with col2:
+        end_week = st.number_input("End Week", min_value=1, value=1, step=1)
+    
+    if start_week > end_week:
+        st.error("Start week must be less than or equal to end week!")
+        return
+    
+    weeks = list(range(start_week, end_week + 1))
+    st.caption(f"Entering scores for weeks: {', '.join(map(str, weeks))}")
+    
+    # Settings
+    auto_calculate_strokes = st.checkbox(
+        "Auto-calculate strokes from handicap",
+        value=True
+    )
+    
+    st.markdown("---")
+    st.markdown("### Enter Scores")
+    
+    # Create form for bulk entry
+    with st.form("bulk_score_form"):
+        # Player selection and score entry
+        entries = []
+        
+        for team in teams:
+            st.markdown(f"**{team.name}**")
+            players = get_team_roster(db, team.id)
+            
+            if not players:
+                st.write(f"*No players in {team.name}*")
+                continue
+            
+            # Create entries for each player
+            for player in players:
+                st.markdown(f"**{player.name}**")
+                
+                # Create columns for each week
+                cols = st.columns(len(weeks))
+                
+                player_entry = {
+                    'player': player,
+                    'weeks': {}
+                }
+                
+                for idx, week_num in enumerate(weeks):
+                    with cols[idx]:
+                        st.caption(f"Week {week_num}")
+                        
+                        # Check if score already exists
+                        existing_score = get_player_scores_by_week(db, player.id, week_num)
+                        
+                        if existing_score:
+                            st.caption(f"⚠️ Exists: {existing_score.net_score:.2f}")
+                        
+                        gross_score = st.number_input(
+                            "Gross",
+                            min_value=1,
+                            max_value=200,
+                            value=existing_score.gross_score if existing_score else 40,
+                            key=f"bulk_gross_{player.id}_{week_num}"
+                        )
+                        
+                        handicap = st.number_input(
+                            "HCP",
+                            min_value=-50.0,
+                            max_value=50.0,
+                            value=existing_score.handicap if existing_score else 10.0,
+                            step=0.1,
+                            format="%.1f",
+                            key=f"bulk_hcp_{player.id}_{week_num}"
+                        )
+                        
+                        # Calculate strokes
+                        if auto_calculate_strokes:
+                            if num_holes == 9:
+                                strokes_given = handicap / 2
+                            else:
+                                strokes_given = handicap
+                        else:
+                            strokes_input = st.number_input(
+                                "Strokes",
+                                min_value=-50.0,
+                                max_value=50.0,
+                                value=existing_score.strokes_given if existing_score else (handicap / 2 if num_holes == 9 else handicap),
+                                step=0.1,
+                                format="%.2f",
+                                key=f"bulk_strokes_{player.id}_{week_num}"
+                            )
+                            strokes_given = strokes_input
+                        
+                        net_score = gross_score - strokes_given
+                        
+                        player_entry['weeks'][week_num] = {
+                            'gross_score': gross_score,
+                            'handicap': handicap,
+                            'strokes_given': strokes_given,
+                            'net_score': net_score,
+                            'existing_score': existing_score
+                        }
+                
+                entries.append(player_entry)
+                
+                st.markdown("---")
+        
+        submitted = st.form_submit_button("Save All Scores", type="primary")
+        
+        if submitted:
+            saved_count = 0
+            updated_count = 0
+            skipped_count = 0
+            error_count = 0
+            
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            total_operations = sum(len(entry['weeks']) for entry in entries)
+            current_op = 0
+            
+            for entry in entries:
+                player = entry['player']
+                
+                for week_num, week_data in entry['weeks'].items():
+                    current_op += 1
+                    progress_bar.progress(current_op / total_operations)
+                    status_text.text(f"Processing {player.name} - Week {week_num}...")
+                    
+                    existing_score = week_data['existing_score']
+                    
+                    try:
+                        if existing_score:
+                            # Update existing score
+                            existing_score.gross_score = week_data['gross_score']
+                            existing_score.handicap = week_data['handicap']
+                            existing_score.strokes_given = week_data['strokes_given']
+                            existing_score.net_score = week_data['net_score']
+                            existing_score.num_holes = num_holes
+                            db.commit()
+                            updated_count += 1
+                        else:
+                            # Create new score
+                            create_weekly_score(
+                                db,
+                                player_id=player.id,
+                                league_id=league.id,
+                                week_number=week_num,
+                                date=datetime.now(),
+                                gross_score=week_data['gross_score'],
+                                handicap=week_data['handicap'],
+                                strokes_given=week_data['strokes_given'],
+                                net_score=week_data['net_score'],
+                                num_holes=num_holes
+                            )
+                            saved_count += 1
+                    except Exception as e:
+                        st.error(f"Error saving score for {player.name} (Week {week_num}): {e}")
+                        error_count += 1
+            
+            progress_bar.empty()
+            status_text.empty()
+            
+            # Show results
+            if saved_count > 0 or updated_count > 0:
+                msg = []
+                if saved_count > 0:
+                    msg.append(f"✅ Saved {saved_count} new scores")
+                if updated_count > 0:
+                    msg.append(f"✅ Updated {updated_count} scores")
+                st.success(" ".join(msg) + f" across {len(weeks)} weeks!")
             if error_count > 0:
                 st.error(f"❌ Failed to save {error_count} scores.")
             
