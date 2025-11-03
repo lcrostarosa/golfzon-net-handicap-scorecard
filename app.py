@@ -501,7 +501,7 @@ def _manual_score_submission(db, league, week_number, num_holes):
 def _bulk_score_submission(db, league, num_holes):
     """Bulk score entry for multiple weeks at team level."""
     st.subheader("Bulk Score Entry - Multiple Weeks")
-    st.info("💡 Enter the top 2 net scores per team for each week. Perfect for catching up an in-progress league!")
+    st.info("💡 Enter the team total score (sum of top 2 net scores) for each team per week. Perfect for catching up an in-progress league!")
     
     # Get all teams
     teams = list_teams(db, league_id=league.id)
@@ -523,11 +523,11 @@ def _bulk_score_submission(db, league, num_holes):
         return
     
     weeks = list(range(start_week, end_week + 1))
-    st.caption(f"Entering team scores for weeks: {', '.join(map(str, weeks))}")
+    st.caption(f"Entering team totals for weeks: {', '.join(map(str, weeks))}")
     
     st.markdown("---")
-    st.markdown("### Enter Team Scores (Top 2 Net Scores)")
-    st.caption("Enter the two net scores that count toward each team's total for each week.")
+    st.markdown("### Enter Team Total Scores")
+    st.caption("Enter the team total (sum of top 2 net scores) for each team per week.")
     
     # Create form for bulk entry
     with st.form("bulk_score_form"):
@@ -561,48 +561,30 @@ def _bulk_score_submission(db, league, num_holes):
                 with cols[idx]:
                     st.caption(f"Week {week_num}")
                     
-                    # Get existing top 2 scores for this week
+                    # Get existing team total for this week
                     top_scores = get_top_two_scores_per_team(db, league.id, week_num)
                     existing_scores = top_scores.get(team.id, [])
                     
-                    if existing_scores:
-                        existing_score1 = existing_scores[0].net_score if len(existing_scores) > 0 else None
-                        existing_score2 = existing_scores[1].net_score if len(existing_scores) > 1 else None
-                        if len(existing_scores) >= 2:
-                            st.caption(f"Current: {existing_scores[0].player.name} ({existing_score1:.2f}), {existing_scores[1].player.name} ({existing_score2:.2f})")
-                        elif len(existing_scores) == 1:
-                            st.caption(f"Current: {existing_scores[0].player.name} ({existing_score1:.2f})")
-                    else:
-                        existing_score1 = None
-                        existing_score2 = None
+                    existing_total = None
+                    if len(existing_scores) >= 2:
+                        existing_total = sum(s.net_score for s in existing_scores[:2])
+                        st.caption(f"Current: {existing_total:.2f} ({existing_scores[0].player.name} + {existing_scores[1].player.name})")
+                    elif len(existing_scores) == 1:
+                        existing_total = existing_scores[0].net_score
+                        st.caption(f"Current: {existing_total:.2f} (incomplete)")
                     
-                    # Input for top 2 net scores
-                    score1 = st.number_input(
-                        "Top Score 1",
+                    # Input for team total
+                    team_total = st.number_input(
+                        "Team Total",
                         min_value=0.0,
-                        max_value=200.0,
-                        value=existing_score1 if existing_score1 else 35.0,
+                        max_value=400.0,
+                        value=existing_total if existing_total else 70.0,
                         step=0.1,
                         format="%.2f",
-                        key=f"bulk_team_{team.id}_week_{week_num}_score1"
+                        key=f"bulk_team_{team.id}_week_{week_num}_total"
                     )
-                    
-                    score2 = st.number_input(
-                        "Top Score 2",
-                        min_value=0.0,
-                        max_value=200.0,
-                        value=existing_score2 if existing_score2 else 36.0,
-                        step=0.1,
-                        format="%.2f",
-                        key=f"bulk_team_{team.id}_week_{week_num}_score2"
-                    )
-                    
-                    team_total = score1 + score2
-                    st.caption(f"**Team Total: {team_total:.2f}**")
                     
                     team_entry['weeks'][week_num] = {
-                        'score1': score1,
-                        'score2': score2,
                         'team_total': team_total,
                         'existing_scores': existing_scores
                     }
@@ -634,19 +616,31 @@ def _bulk_score_submission(db, league, num_holes):
                     
                     # Get existing scores for this team/week
                     existing_scores = week_data['existing_scores']
-                    target_score1 = week_data['score1']
-                    target_score2 = week_data['score2']
+                    target_total = week_data['team_total']
                     
                     # Get all scores for this team/week
                     all_team_scores = get_scores_by_week(db, league.id, week_num)
                     team_player_scores = [s for s in all_team_scores if s.player.team_id == team.id]
                     team_player_scores.sort(key=lambda x: x.net_score)
                     
-                    # Update or create scores for the top 2 players
+                    # Calculate target scores (split evenly, or use existing proportions)
                     if len(team_player_scores) >= 2:
-                        # Update existing top 2 scores
+                        # Update existing top 2 scores proportionally
                         score1_obj = team_player_scores[0]
                         score2_obj = team_player_scores[1]
+                        
+                        # Calculate current total and proportions
+                        current_total = score1_obj.net_score + score2_obj.net_score
+                        if current_total > 0:
+                            # Maintain proportions
+                            ratio1 = score1_obj.net_score / current_total
+                            ratio2 = score2_obj.net_score / current_total
+                            target_score1 = target_total * ratio1
+                            target_score2 = target_total * ratio2
+                        else:
+                            # Split evenly
+                            target_score1 = target_total / 2
+                            target_score2 = target_total / 2
                         
                         try:
                             # Adjust gross_score to achieve target net_score
@@ -667,13 +661,24 @@ def _bulk_score_submission(db, league, num_holes):
                     elif len(team_player_scores) == 1:
                         # Update existing score, create second
                         score1_obj = team_player_scores[0]
+                        # Split: use existing score proportionally, or split evenly
+                        if score1_obj.net_score > 0:
+                            # Maintain player 1's score, calculate player 2's
+                            target_score1 = score1_obj.net_score
+                            target_score2 = target_total - target_score1
+                        else:
+                            # Split evenly
+                            target_score1 = target_total / 2
+                            target_score2 = target_total / 2
+                        
+                        # Update first score
                         gross_diff1 = target_score1 - score1_obj.net_score
                         score1_obj.gross_score = int(score1_obj.gross_score + gross_diff1)
                         score1_obj.net_score = target_score1
                         db.commit()
                         updated_count += 1
                         
-                        # Create second score for another player
+                        # Create second score
                         player2 = players[1] if players[0].id == score1_obj.player_id else players[0]
                         estimated_gross = target_score2 + score1_obj.strokes_given
                         try:
@@ -694,10 +699,12 @@ def _bulk_score_submission(db, league, num_holes):
                             st.error(f"Error creating score for {player2.name} (Week {week_num}): {e}")
                             error_count += 1
                     else:
-                        # No scores exist, create them for first 2 players
-                        # Use default handicap for calculation
+                        # No scores exist, create them - split evenly
                         default_handicap = 10.0
                         strokes = default_handicap / 2 if num_holes == 9 else default_handicap
+                        
+                        target_score1 = target_total / 2
+                        target_score2 = target_total / 2
                         
                         try:
                             # Create first score
