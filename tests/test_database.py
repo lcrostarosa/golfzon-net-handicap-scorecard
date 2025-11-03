@@ -131,7 +131,7 @@ def test_get_scores_by_week(db_session, sample_league, sample_scores):
 
 def test_get_top_two_scores_per_team(db_session, sample_league, sample_teams, sample_players):
     """Test getting top 2 scores per team."""
-        from golfzon_ocr.db import create_weekly_score
+    from golfzon_ocr.db import create_weekly_score
     from datetime import datetime
     
     # Create scores for week 1
@@ -162,7 +162,7 @@ def test_get_top_two_scores_per_team(db_session, sample_league, sample_teams, sa
 
 def test_calculate_team_score_for_week(db_session, sample_league, sample_teams, sample_players):
     """Test calculating team score for a week."""
-        from golfzon_ocr.db import create_weekly_score
+    from golfzon_ocr.db import create_weekly_score
     from datetime import datetime
     
     team = sample_teams[0]
