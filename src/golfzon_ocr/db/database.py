@@ -1,7 +1,6 @@
 """
 Database connection and session management.
 """
-import os
 from typing import List, Optional
 from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker, Session
@@ -9,9 +8,10 @@ from contextlib import contextmanager
 from datetime import datetime
 
 from ..models import Base, League, Team, Player, WeeklyScore
+from ..config import config
 
 # Database file path
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///golfzon_league.db")
+DATABASE_URL = config.DATABASE_URL
 
 # Create engine
 engine = create_engine(
