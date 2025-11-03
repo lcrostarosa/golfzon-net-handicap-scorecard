@@ -29,10 +29,11 @@ def calculate_weekly_standings(db: Session, league_id: int, week_number: int) ->
         top_two_scores = top_scores.get(team.id, [])
         
         if len(top_two_scores) >= 2:
+            # Team has 2+ scores - sum of top 2
             team_score = sum(score.net_score for score in top_two_scores[:2])
         elif len(top_two_scores) == 1:
-            # Team has only 1 score - can't compete
-            team_score = None
+            # Team has only 1 score - show partial score
+            team_score = top_two_scores[0].net_score
         
         standings.append({
             'team_id': team.id,
@@ -42,11 +43,16 @@ def calculate_weekly_standings(db: Session, league_id: int, week_number: int) ->
                 {'player_name': score.player.name, 'net_score': score.net_score}
                 for score in top_two_scores[:2]
             ],
-            'player_count': len(top_two_scores)
+            'player_count': len(top_two_scores),
+            'is_complete': len(top_two_scores) >= 2
         })
     
-    # Sort by score (lowest first), teams with None scores go to end
-    standings.sort(key=lambda x: (x['score'] is None, x['score'] or float('inf')))
+    # Sort by score (lowest first), incomplete teams (with 1 score) go before teams with no scores
+    standings.sort(key=lambda x: (
+        x['score'] is None,  # Teams with no scores go last
+        not x.get('is_complete', False),  # Incomplete teams go before complete teams
+        x['score'] or float('inf')
+    ))
     
     return standings
 
@@ -70,13 +76,15 @@ def calculate_cumulative_standings(db: Session, league_id: int) -> List[Dict]:
     for week_number in weeks:
         standings = calculate_weekly_standings(db, league_id, week_number)
         for standing in standings:
+            # Include incomplete scores (single score) in cumulative
             if standing['score'] is not None:
                 team_id = standing['team_id']
                 team_totals[team_id]['total_score'] += standing['score']
                 team_totals[team_id]['weeks_played'] += 1
                 team_totals[team_id]['weekly_scores'].append({
                     'week': week_number,
-                    'score': standing['score']
+                    'score': standing['score'],
+                    'is_complete': standing.get('is_complete', False)
                 })
     
     # Convert to list and sort

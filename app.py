@@ -107,7 +107,7 @@ def league_selection_sidebar():
 
 
 def page_score_submission():
-    """Score submission page with OCR."""
+    """Score submission page with OCR and manual entry."""
     st.header("📸 Submit Scores")
     
     if not st.session_state.selected_league_id:
@@ -129,208 +129,370 @@ def page_score_submission():
         with col2:
             num_holes = st.radio("Number of holes:", [9, 18], index=0, horizontal=True)
         
-        # Settings
-        auto_calculate_strokes = st.checkbox(
-            "Auto-calculate strokes from handicap",
-            value=True
+        # Submission method selection
+        submission_method = st.radio(
+            "Submission Method:",
+            ["OCR from Image", "Manual Entry"],
+            horizontal=True
         )
         
-        # File uploader
-        uploaded_file = st.file_uploader(
-            "Choose an image file",
-            type=['jpg', 'jpeg', 'png'],
-            help="Upload a screenshot of your Golfzon scorecard"
-        )
+        if submission_method == "OCR from Image":
+            _ocr_score_submission(db, league, week_number, num_holes)
+        else:
+            _manual_score_submission(db, league, week_number, num_holes)
+
+
+def _ocr_score_submission(db, league, week_number, num_holes):
+    """OCR-based score submission."""
+    # Settings
+    auto_calculate_strokes = st.checkbox(
+        "Auto-calculate strokes from handicap",
+        value=True
+    )
+    
+    # File uploader
+    uploaded_file = st.file_uploader(
+        "Choose an image file",
+        type=['jpg', 'jpeg', 'png'],
+        help="Upload a screenshot of your Golfzon scorecard"
+    )
+    
+    # Reset session state when new file is uploaded
+    if uploaded_file is not None:
+        current_file_id = id(uploaded_file)
+        if st.session_state.current_image_id != current_file_id:
+            st.session_state.current_image_id = current_file_id
+            st.session_state.original_results = None
+            st.session_state.current_results = None
+    
+    if uploaded_file is not None:
+        # Display uploaded image
+        image = Image.open(uploaded_file)
+        st.image(image, caption="Uploaded Scorecard", use_container_width=True)
         
-        # Reset session state when new file is uploaded
-        if uploaded_file is not None:
-            current_file_id = id(uploaded_file)
-            if st.session_state.current_image_id != current_file_id:
-                st.session_state.current_image_id = current_file_id
-                st.session_state.original_results = None
-                st.session_state.current_results = None
-        
-        if uploaded_file is not None:
-            # Display uploaded image
-            image = Image.open(uploaded_file)
-            st.image(image, caption="Uploaded Scorecard", use_container_width=True)
-            
-            # Process the image
-            with st.spinner("Processing image with OCR..."):
-                try:
-                    # Extract text using OCR
-                    ocr_text = extract_text(image)
-                    
-                    # Backup OCR
-                    try:
-                        import pytesseract
-                        import cv2
-                        import numpy as np
-                        img_array = np.array(image)
-                        if len(img_array.shape) == 3:
-                            img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
-                        gray = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
-                        try:
-                            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-                            enhanced = clahe.apply(gray)
-                        except:
-                            enhanced = gray
-                        backup_ocr_text = pytesseract.image_to_string(enhanced, config=r'--oem 3 --psm 11')
-                    except:
-                        backup_ocr_text = None
-                    
-                    # Show raw OCR text
-                    with st.expander("Raw OCR Text", expanded=False):
-                        st.text(ocr_text)
-                    
-                    # Parse player data
-                    players = parse_players(ocr_text, backup_ocr_text=backup_ocr_text if 'backup_ocr_text' in locals() else None)
-                    
-                    if not players:
-                        st.error("❌ No player data found in the image.")
-                        return
-                    
-                    # Calculate net scores
-                    if st.session_state.original_results is None:
-                        results = calculate_net_scores(players, num_holes)
-                        st.session_state.original_results = results
-                        st.session_state.current_results = results
-                    else:
-                        results = st.session_state.current_results
-                    
-                    # Display results
-                    st.header("📊 Results")
-                    
-                    df = pd.DataFrame(results)
-                    df_display = df[['name', 'gross_score', 'handicap', 'strokes_given', 'net_score']].copy()
-                    df_display.columns = ['Player', 'Gross Score', 'Handicap (G-HCP)', 'Strokes Given', 'Net Score']
-                    
-                    column_config = {
-                        "Player": st.column_config.TextColumn("Player", disabled=True),
-                        "Gross Score": st.column_config.NumberColumn("Gross Score", min_value=1, max_value=200, step=1),
-                        "Handicap (G-HCP)": st.column_config.NumberColumn("Handicap (G-HCP)", min_value=-50.0, max_value=50.0, step=0.1, format="%.1f"),
-                        "Strokes Given": st.column_config.NumberColumn("Strokes Given", min_value=-50.0, max_value=50.0, step=0.1, format="%.2f", disabled=auto_calculate_strokes),
-                        "Net Score": st.column_config.NumberColumn("Net Score", format="%.2f", disabled=True)
-                    }
-                    
-                    edited_df = st.data_editor(
-                        df_display,
-                        column_config=column_config,
-                        use_container_width=True,
-                        hide_index=True,
-                        key=f"results_editor_{num_holes}_{auto_calculate_strokes}"
-                    )
-                    
-                    # Convert back to results format
-                    edited_results = []
-                    for _, row in edited_df.iterrows():
-                        edited_results.append({
-                            "name": row["Player"],
-                            "gross_score": int(row["Gross Score"]),
-                            "handicap": float(row["Handicap (G-HCP)"]),
-                            "strokes_given": float(row["Strokes Given"])
-                        })
-                    
-                    # Recalculate
-                    recalculated_results = recalculate_net_scores(
-                        edited_results,
-                        num_holes,
-                        auto_calculate_strokes=auto_calculate_strokes
-                    )
-                    st.session_state.current_results = recalculated_results
-                    results = recalculated_results
-                    
-                    # Display winner
-                    if results:
-                        winner = results[0]
-                        st.markdown(
-                            f'<div class="winner-banner">🏆 Winner: {winner["name"]} '
-                            f'(Net Score: {winner["net_score"]:.1f})</div>',
-                            unsafe_allow_html=True
-                        )
-                    
-                    # Save to database
-                    st.markdown("---")
-                    st.subheader("💾 Save Scores")
-                    
-                    # Match players to database
-                    matched_players = match_ocr_players_to_existing(db, players, st.session_state.selected_league_id)
-                    
-                    # Check if all players are matched
-                    unmatched = [m for m in matched_players if m['action'] == 'needs_team']
-                    if unmatched:
-                        st.warning(f"⚠️ {len(unmatched)} players need team assignment before saving.")
-                        st.write("Unmatched players:")
-                        for match in unmatched:
-                            st.write(f"- {match['ocr_data']['name']}")
-                        st.info("Please assign these players to teams in the Team Management page first.")
-                    else:
-                        # Show matching status
-                        with st.expander("Player Matching", expanded=False):
-                            for match in matched_players:
-                                status_icon = "✅" if match['action'] == 'matched' else "🆕"
-                                st.write(f"{status_icon} {match['ocr_data']['name']} → {match['player'].name} ({match['player'].team.name})")
-                        
-                        if st.button("Save Scores to Database", type="primary"):
-                            saved_count = 0
-                            error_count = 0
-                            
-                            # Create a mapping of player names to calculated results
-                            results_dict = {r['name']: r for r in results}
-                            
-                            for match in matched_players:
-                                player = match['player']
-                                ocr_data = match['ocr_data']
-                                
-                                # Find matching calculated result
-                                calculated_result = results_dict.get(ocr_data['name'])
-                                if not calculated_result:
-                                    # Try to find by matching player name
-                                    calculated_result = next(
-                                        (r for r in results
-                                         if r['name'].lower() == player.name.lower()),
-                                        None
-                                    )
-                                
-                                if not calculated_result:
-                                    st.warning(f"Could not find calculated result for {player.name}. Skipping.")
-                                    error_count += 1
-                                    continue
-                                
-                                # Check if score already exists for this week
-                                existing_score = get_player_scores_by_week(db, player.id, week_number)
-                                if existing_score:
-                                    st.warning(f"Score for {player.name} (Week {week_number}) already exists. Skipping.")
-                                    continue
-                                
-                                try:
-                                    create_weekly_score(
-                                        db,
-                                        player_id=player.id,
-                                        league_id=st.session_state.selected_league_id,
-                                        week_number=week_number,
-                                        date=datetime.now(),
-                                        gross_score=calculated_result['gross_score'],
-                                        handicap=calculated_result['handicap'],
-                                        strokes_given=calculated_result['strokes_given'],
-                                        net_score=calculated_result['net_score'],
-                                        num_holes=num_holes
-                                    )
-                                    saved_count += 1
-                                except Exception as e:
-                                    st.error(f"Error saving score for {player.name}: {e}")
-                                    error_count += 1
-                            
-                            if saved_count > 0:
-                                st.success(f"✅ Saved {saved_count} scores for Week {week_number}!")
-                            if error_count > 0:
-                                st.error(f"❌ Failed to save {error_count} scores.")
-                            
-                            st.rerun()
+        # Process the image
+        with st.spinner("Processing image with OCR..."):
+            try:
+                # Extract text using OCR
+                ocr_text = extract_text(image)
                 
+                # Backup OCR
+                try:
+                    import pytesseract
+                    import cv2
+                    import numpy as np
+                    img_array = np.array(image)
+                    if len(img_array.shape) == 3:
+                        img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+                    gray = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
+                    try:
+                        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                        enhanced = clahe.apply(gray)
+                    except Exception:
+                        enhanced = gray
+                    backup_ocr_text = pytesseract.image_to_string(enhanced, config=r'--oem 3 --psm 11')
+                except Exception:
+                    backup_ocr_text = None
+                
+                # Show raw OCR text
+                with st.expander("Raw OCR Text", expanded=False):
+                    st.text(ocr_text)
+                
+                # Parse player data
+                players = parse_players(ocr_text, backup_ocr_text=backup_ocr_text if 'backup_ocr_text' in locals() else None)
+                
+                if not players:
+                    st.error("❌ No player data found in the image.")
+                    return
+                
+                # Calculate net scores
+                if st.session_state.original_results is None:
+                    results = calculate_net_scores(players, num_holes)
+                    st.session_state.original_results = results
+                    st.session_state.current_results = results
+                else:
+                    results = st.session_state.current_results
+                
+                # Display results
+                st.header("📊 Results")
+                
+                df = pd.DataFrame(results)
+                df_display = df[['name', 'gross_score', 'handicap', 'strokes_given', 'net_score']].copy()
+                df_display.columns = ['Player', 'Gross Score', 'Handicap (G-HCP)', 'Strokes Given', 'Net Score']
+                
+                column_config = {
+                    "Player": st.column_config.TextColumn("Player", disabled=True),
+                    "Gross Score": st.column_config.NumberColumn("Gross Score", min_value=1, max_value=200, step=1),
+                    "Handicap (G-HCP)": st.column_config.NumberColumn("Handicap (G-HCP)", min_value=-50.0, max_value=50.0, step=0.1, format="%.1f"),
+                    "Strokes Given": st.column_config.NumberColumn("Strokes Given", min_value=-50.0, max_value=50.0, step=0.1, format="%.2f", disabled=auto_calculate_strokes),
+                    "Net Score": st.column_config.NumberColumn("Net Score", format="%.2f", disabled=True)
+                }
+                
+                edited_df = st.data_editor(
+                    df_display,
+                    column_config=column_config,
+                    use_container_width=True,
+                    hide_index=True,
+                    key=f"results_editor_{num_holes}_{auto_calculate_strokes}"
+                )
+                
+                # Convert back to results format
+                edited_results = []
+                for _, row in edited_df.iterrows():
+                    edited_results.append({
+                        "name": row["Player"],
+                        "gross_score": int(row["Gross Score"]),
+                        "handicap": float(row["Handicap (G-HCP)"]),
+                        "strokes_given": float(row["Strokes Given"])
+                    })
+                
+                # Recalculate
+                recalculated_results = recalculate_net_scores(
+                    edited_results,
+                    num_holes,
+                    auto_calculate_strokes=auto_calculate_strokes
+                )
+                st.session_state.current_results = recalculated_results
+                results = recalculated_results
+                
+                # Display winner
+                if results:
+                    winner = results[0]
+                    st.markdown(
+                        f'<div class="winner-banner">🏆 Winner: {winner["name"]} '
+                        f'(Net Score: {winner["net_score"]:.1f})</div>',
+                        unsafe_allow_html=True
+                    )
+                
+                # Save to database
+                st.markdown("---")
+                st.subheader("💾 Save Scores")
+                
+                # Match players to database
+                matched_players = match_ocr_players_to_existing(db, players, st.session_state.selected_league_id)
+                
+                # Check if all players are matched
+                unmatched = [m for m in matched_players if m['action'] == 'needs_team']
+                if unmatched:
+                    st.warning(f"⚠️ {len(unmatched)} players need team assignment before saving.")
+                    st.write("Unmatched players:")
+                    for match in unmatched:
+                        st.write(f"- {match['ocr_data']['name']}")
+                    st.info("Please assign these players to teams in the Team Management page first.")
+                else:
+                    # Show matching status
+                    with st.expander("Player Matching", expanded=False):
+                        for match in matched_players:
+                            status_icon = "✅" if match['action'] == 'matched' else "🆕"
+                            st.write(f"{status_icon} {match['ocr_data']['name']} → {match['player'].name} ({match['player'].team.name})")
+                    
+                    if st.button("Save Scores to Database", type="primary"):
+                        saved_count = 0
+                        error_count = 0
+                        
+                        # Create a mapping of player names to calculated results
+                        results_dict = {r['name']: r for r in results}
+                        
+                        for match in matched_players:
+                            player = match['player']
+                            ocr_data = match['ocr_data']
+                            
+                            # Find matching calculated result
+                            calculated_result = results_dict.get(ocr_data['name'])
+                            if not calculated_result:
+                                # Try to find by matching player name
+                                calculated_result = next(
+                                    (r for r in results
+                                     if r['name'].lower() == player.name.lower()),
+                                    None
+                                )
+                            
+                            if not calculated_result:
+                                st.warning(f"Could not find calculated result for {player.name}. Skipping.")
+                                error_count += 1
+                                continue
+                            
+                            # Check if score already exists for this week
+                            existing_score = get_player_scores_by_week(db, player.id, week_number)
+                            if existing_score:
+                                st.warning(f"Score for {player.name} (Week {week_number}) already exists. Skipping.")
+                                continue
+                            
+                            try:
+                                create_weekly_score(
+                                    db,
+                                    player_id=player.id,
+                                    league_id=st.session_state.selected_league_id,
+                                    week_number=week_number,
+                                    date=datetime.now(),
+                                    gross_score=calculated_result['gross_score'],
+                                    handicap=calculated_result['handicap'],
+                                    strokes_given=calculated_result['strokes_given'],
+                                    net_score=calculated_result['net_score'],
+                                    num_holes=num_holes
+                                )
+                                saved_count += 1
+                            except Exception as e:
+                                st.error(f"Error saving score for {player.name}: {e}")
+                                error_count += 1
+                        
+                        if saved_count > 0:
+                            st.success(f"✅ Saved {saved_count} scores for Week {week_number}!")
+                        if error_count > 0:
+                            st.error(f"❌ Failed to save {error_count} scores.")
+                        
+                        st.rerun()
+            
+            except Exception as e:
+                st.error(f"❌ Error processing image: {str(e)}")
+                st.exception(e)
+
+
+def _manual_score_submission(db, league, week_number, num_holes):
+    """Manual score entry submission."""
+    st.subheader("Manual Score Entry")
+    
+    # Get all teams and players
+    teams = list_teams(db, league_id=league.id)
+    
+    if not teams:
+        st.warning("No teams found. Please create teams first in the Team Management page.")
+        return
+    
+    # Settings
+    auto_calculate_strokes = st.checkbox(
+        "Auto-calculate strokes from handicap",
+        value=True
+    )
+    
+    # Manual entry form
+    st.markdown("### Enter Scores")
+    
+    # Create form for manual entry
+    with st.form("manual_score_form"):
+        # Player selection and score entry
+        entries = []
+        
+        for team in teams:
+            st.markdown(f"**{team.name}**")
+            players = get_team_roster(db, team.id)
+            
+            if not players:
+                st.write(f"*No players in {team.name}*")
+                continue
+            
+            # Create entries for each player
+            for player in players:
+                # Check if score already exists
+                existing_score = get_player_scores_by_week(db, player.id, week_number)
+                
+                col1, col2, col3 = st.columns([2, 1, 1])
+                with col1:
+                    st.write(f"**{player.name}**")
+                    if existing_score:
+                        st.caption(f"⚠️ Score exists: {existing_score.net_score:.2f} (Week {week_number})")
+                
+                with col2:
+                    gross_score = st.number_input(
+                        "Gross Score",
+                        min_value=1,
+                        max_value=200,
+                        value=existing_score.gross_score if existing_score else 40,
+                        key=f"gross_{player.id}"
+                    )
+                
+                with col3:
+                    handicap = st.number_input(
+                        "Handicap",
+                        min_value=-50.0,
+                        max_value=50.0,
+                        value=existing_score.handicap if existing_score else 10.0,
+                        step=0.1,
+                        format="%.1f",
+                        key=f"handicap_{player.id}"
+                    )
+                
+                # Calculate strokes and net score
+                if auto_calculate_strokes:
+                    if num_holes == 9:
+                        strokes_given = handicap / 2
+                    else:
+                        strokes_given = handicap
+                else:
+                    strokes_given_input = st.number_input(
+                        "Strokes Given",
+                        min_value=-50.0,
+                        max_value=50.0,
+                        value=existing_score.strokes_given if existing_score else (handicap / 2 if num_holes == 9 else handicap),
+                        step=0.1,
+                        format="%.2f",
+                        key=f"strokes_{player.id}"
+                    )
+                    strokes_given = strokes_given_input
+                
+                net_score = gross_score - strokes_given
+                
+                entries.append({
+                    'player': player,
+                    'gross_score': gross_score,
+                    'handicap': handicap,
+                    'strokes_given': strokes_given,
+                    'net_score': net_score,
+                    'existing_score': existing_score
+                })
+        
+        submitted = st.form_submit_button("Save Scores", type="primary")
+        
+        if submitted:
+            saved_count = 0
+            updated_count = 0
+            error_count = 0
+            
+            for entry in entries:
+                player = entry['player']
+                existing_score = entry['existing_score']
+                
+                try:
+                    if existing_score:
+                        # Update existing score
+                        existing_score.gross_score = entry['gross_score']
+                        existing_score.handicap = entry['handicap']
+                        existing_score.strokes_given = entry['strokes_given']
+                        existing_score.net_score = entry['net_score']
+                        existing_score.num_holes = num_holes
+                        db.commit()
+                        updated_count += 1
+                    else:
+                        # Create new score
+                        create_weekly_score(
+                            db,
+                            player_id=player.id,
+                            league_id=league.id,
+                            week_number=week_number,
+                            date=datetime.now(),
+                            gross_score=entry['gross_score'],
+                            handicap=entry['handicap'],
+                            strokes_given=entry['strokes_given'],
+                            net_score=entry['net_score'],
+                            num_holes=num_holes
+                        )
+                        saved_count += 1
                 except Exception as e:
-                    st.error(f"❌ Error processing image: {str(e)}")
-                    st.exception(e)
+                    st.error(f"Error saving score for {player.name}: {e}")
+                    error_count += 1
+            
+            if saved_count > 0 or updated_count > 0:
+                msg = []
+                if saved_count > 0:
+                    msg.append(f"✅ Saved {saved_count} new scores")
+                if updated_count > 0:
+                    msg.append(f"✅ Updated {updated_count} scores")
+                st.success(" ".join(msg) + f" for Week {week_number}!")
+            if error_count > 0:
+                st.error(f"❌ Failed to save {error_count} scores.")
+            
+            if saved_count > 0 or updated_count > 0:
+                st.rerun()
 
 
 def page_team_management():
@@ -438,15 +600,32 @@ def page_leaderboard():
             if standings:
                 standings_data = []
                 for rank, standing in enumerate(standings, 1):
+                    score_display = standing['score']
+                    if standing['score'] is None:
+                        score_display = 'No scores'
+                    elif not standing.get('is_complete', False):
+                        score_display = f"{standing['score']:.2f}* (1 of 2)"
+                    else:
+                        score_display = f"{standing['score']:.2f}"
+                    
+                    players_str = ', '.join([f"{s['player_name']} ({s['net_score']:.2f})" 
+                                            for s in standing['top_two_scores']])
+                    if not standing['top_two_scores']:
+                        players_str = 'No scores'
+                    
                     standings_data.append({
                         'Rank': rank,
                         'Team': standing['team_name'],
-                        'Score': standing['score'] if standing['score'] is not None else 'Incomplete',
-                        'Top Players': ', '.join([f"{s['player_name']} ({s['net_score']})" for s in standing['top_two_scores']])
+                        'Score': score_display,
+                        'Status': 'Complete' if standing.get('is_complete', False) else 'Incomplete',
+                        'Top Players': players_str
                     })
                 
                 df = pd.DataFrame(standings_data)
                 st.dataframe(df, use_container_width=True, hide_index=True)
+                
+                if any(not s.get('is_complete', False) for s in standings):
+                    st.caption("* Teams with 1 score shown - need 2 scores for complete standings")
             else:
                 st.info("No scores for this week yet.")
         
