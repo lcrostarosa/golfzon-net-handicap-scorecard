@@ -4,11 +4,10 @@ Streamlit application for Golfzon scorecard OCR and net score calculation.
 import streamlit as st
 from PIL import Image
 import pandas as pd
-import io
 
 from ocr import extract_text
 from parser import parse_players
-from calculator import calculate_net_scores
+from calculator import calculate_net_scores, recalculate_net_scores
 
 
 # Page configuration
@@ -48,6 +47,13 @@ def main():
             help="Select 9-hole or 18-hole round"
         )
         
+        # Auto-calculate strokes toggle
+        auto_calculate_strokes = st.checkbox(
+            "Auto-calculate strokes from handicap",
+            value=True,
+            help="When enabled, strokes are calculated from handicap. When disabled, you can manually edit strokes."
+        )
+        
         st.markdown("---")
         st.markdown("### How it works:")
         st.markdown("""
@@ -57,7 +63,16 @@ def main():
            - **9-hole**: strokes = handicap / 2
            - **18-hole**: strokes = handicap
         4. Results sorted by net score (lowest wins)
+        5. Edit values directly in the table to recalculate
         """)
+    
+    # Initialize session state
+    if 'original_results' not in st.session_state:
+        st.session_state.original_results = None
+    if 'current_results' not in st.session_state:
+        st.session_state.current_results = None
+    if 'current_image_id' not in st.session_state:
+        st.session_state.current_image_id = None
     
     # File uploader
     uploaded_file = st.file_uploader(
@@ -65,6 +80,14 @@ def main():
         type=['jpg', 'jpeg', 'png'],
         help="Upload a screenshot of your Golfzon scorecard"
     )
+    
+    # Reset session state when new file is uploaded
+    if uploaded_file is not None:
+        current_file_id = id(uploaded_file)
+        if st.session_state.current_image_id != current_file_id:
+            st.session_state.current_image_id = current_file_id
+            st.session_state.original_results = None
+            st.session_state.current_results = None
     
     if uploaded_file is not None:
         # Display uploaded image
@@ -112,25 +135,87 @@ def main():
                     st.text("OCR Output:")
                     st.text(ocr_text)
                 else:
-                    # Calculate net scores
-                    results = calculate_net_scores(players, num_holes)
+                    # Calculate net scores (initial calculation from OCR)
+                    if st.session_state.original_results is None:
+                        results = calculate_net_scores(players, num_holes)
+                        st.session_state.original_results = results
+                        st.session_state.current_results = results
+                    else:
+                        # Use existing results from session state
+                        results = st.session_state.current_results
                     
                     # Display results
                     st.header("📊 Results")
                     
-                    # Create DataFrame for display
+                    # Create DataFrame for display from current results
                     df = pd.DataFrame(results)
                     
                     # Reorder columns for better display
                     df_display = df[['name', 'gross_score', 'handicap', 'strokes_given', 'net_score']].copy()
                     df_display.columns = ['Player', 'Gross Score', 'Handicap (G-HCP)', 'Strokes Given', 'Net Score']
                     
-                    # Display table
-                    st.dataframe(
+                    # Configure data editor with appropriate column types
+                    column_config = {
+                        "Player": st.column_config.TextColumn("Player", disabled=True),
+                        "Gross Score": st.column_config.NumberColumn(
+                            "Gross Score",
+                            min_value=1,
+                            max_value=200,
+                            step=1
+                        ),
+                        "Handicap (G-HCP)": st.column_config.NumberColumn(
+                            "Handicap (G-HCP)",
+                            min_value=-50.0,
+                            max_value=50.0,
+                            step=0.1,
+                            format="%.1f"
+                        ),
+                        "Strokes Given": st.column_config.NumberColumn(
+                            "Strokes Given",
+                            min_value=-50.0,
+                            max_value=50.0,
+                            step=0.1,
+                            format="%.2f",
+                            disabled=auto_calculate_strokes
+                        ),
+                        "Net Score": st.column_config.NumberColumn(
+                            "Net Score",
+                            format="%.2f",
+                            disabled=True
+                        )
+                    }
+                    
+                    # Display editable table (key includes settings to reset when they change)
+                    edited_df = st.data_editor(
                         df_display,
+                        column_config=column_config,
                         use_container_width=True,
-                        hide_index=True
+                        hide_index=True,
+                        key=f"results_editor_{num_holes}_{auto_calculate_strokes}"
                     )
+                    
+                    # Convert edited dataframe back to results format
+                    edited_results = []
+                    for _, row in edited_df.iterrows():
+                        edited_results.append({
+                            "name": row["Player"],
+                            "gross_score": int(row["Gross Score"]),
+                            "handicap": float(row["Handicap (G-HCP)"]),
+                            "strokes_given": float(row["Strokes Given"])
+                        })
+                    
+                    # Recalculate net scores with edited values (handles auto-calculate toggle)
+                    recalculated_results = recalculate_net_scores(
+                        edited_results,
+                        num_holes,
+                        auto_calculate_strokes=auto_calculate_strokes
+                    )
+                    
+                    # Update session state with recalculated results
+                    st.session_state.current_results = recalculated_results
+                    
+                    # Use recalculated results for winner and CSV export
+                    results = recalculated_results
                     
                     # Display winner
                     if results:
@@ -142,7 +227,8 @@ def main():
                         )
                     
                     # CSV export
-                    csv = df.to_csv(index=False)
+                    csv_df = pd.DataFrame(results)
+                    csv = csv_df.to_csv(index=False)
                     st.download_button(
                         label="📥 Download Results as CSV",
                         data=csv,
