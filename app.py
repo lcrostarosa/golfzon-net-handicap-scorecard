@@ -6,6 +6,14 @@ from PIL import Image
 import pandas as pd
 from datetime import datetime
 
+# Register HEIC support
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except ImportError:
+    # pillow-heif not installed, HEIC files won't be supported
+    pass
+
 from golfzon_ocr.processing import extract_text, parse_players, calculate_net_scores, recalculate_net_scores
 from golfzon_ocr.db import (
     get_db_context, create_league, get_league, list_leagues,
@@ -152,7 +160,7 @@ def _ocr_score_submission(db, league, week_number, num_holes):
     # File uploader
     uploaded_file = st.file_uploader(
         "Choose an image file",
-        type=['jpg', 'jpeg', 'png'],
+        type=['jpg', 'jpeg', 'png', 'heic', 'heif'],
         help="Upload a screenshot of your Golfzon scorecard"
     )
     
@@ -166,8 +174,23 @@ def _ocr_score_submission(db, league, week_number, num_holes):
     
     if uploaded_file is not None:
         # Display uploaded image
-        image = Image.open(uploaded_file)
-        st.image(image, caption="Uploaded Scorecard", use_container_width=True)
+        try:
+            image = Image.open(uploaded_file)
+            # Convert HEIC to RGB if needed
+            if image.mode in ('RGBA', 'LA', 'P'):
+                # Convert to RGB for better OCR compatibility
+                rgb_image = Image.new('RGB', image.size, (255, 255, 255))
+                if image.mode == 'P':
+                    image = image.convert('RGBA')
+                rgb_image.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
+                image = rgb_image
+            elif image.mode != 'RGB':
+                image = image.convert('RGB')
+            st.image(image, caption="Uploaded Scorecard", use_container_width=True)
+        except Exception as e:
+            st.error(f"Error loading image: {str(e)}")
+            st.info("If this is a HEIC file, make sure pillow-heif is installed: pip install pillow-heif")
+            return
         
         # Process the image
         with st.spinner("Processing image with OCR..."):
@@ -219,13 +242,22 @@ def _ocr_score_submission(db, league, week_number, num_holes):
                 df_display = df[['name', 'gross_score', 'handicap', 'strokes_given', 'net_score']].copy()
                 df_display.columns = ['Player', 'Gross Score', 'Handicap (G-HCP)', 'Strokes Given', 'Net Score']
                 
+                # Replace empty names with placeholder text for display
+                df_display['Player'] = df_display['Player'].replace('', 'Enter player name...')
+                
                 column_config = {
-                    "Player": st.column_config.TextColumn("Player", disabled=True),
+                    "Player": st.column_config.TextColumn("Player", disabled=False),  # Enable editing for manual name entry
                     "Gross Score": st.column_config.NumberColumn("Gross Score", min_value=1, max_value=200, step=1),
                     "Handicap (G-HCP)": st.column_config.NumberColumn("Handicap (G-HCP)", min_value=-50.0, max_value=50.0, step=0.1, format="%.1f"),
                     "Strokes Given": st.column_config.NumberColumn("Strokes Given", min_value=-50.0, max_value=50.0, step=0.1, format="%.2f", disabled=auto_calculate_strokes),
                     "Net Score": st.column_config.NumberColumn("Net Score", format="%.2f", disabled=True)
                 }
+                
+                # Show warning if any players have empty names
+                if any(r.get('name', '').strip() == '' for r in results):
+                    empty_count = sum(1 for r in results if not r.get('name', '').strip())
+                    st.warning(f"⚠️ {empty_count} player(s) have missing names. **Click on the 'Enter player name...' cells in the Player column below to edit them.**")
+                    st.info("💡 **How to edit:** Click directly on the cell showing 'Enter player name...', delete that text, and type the actual player name.")
                 
                 edited_df = st.data_editor(
                     df_display,
@@ -238,8 +270,16 @@ def _ocr_score_submission(db, league, week_number, num_holes):
                 # Convert back to results format
                 edited_results = []
                 for _, row in edited_df.iterrows():
+                    player_name = row["Player"]
+                    # Handle placeholder text - convert back to empty string
+                    # Also handle NaN values that might come from pandas
+                    if pd.isna(player_name) or str(player_name).strip() == "" or "Enter player name" in str(player_name):
+                        player_name = ""
+                    else:
+                        player_name = str(player_name).strip()
+                    
                     edited_results.append({
-                        "name": row["Player"],
+                        "name": player_name,
                         "gross_score": int(row["Gross Score"]),
                         "handicap": float(row["Handicap (G-HCP)"]),
                         "strokes_given": float(row["Strokes Given"])
@@ -254,21 +294,37 @@ def _ocr_score_submission(db, league, week_number, num_holes):
                 st.session_state.current_results = recalculated_results
                 results = recalculated_results
                 
-                # Display winner
+                # Check for empty names after editing
+                players_with_empty_names = [r for r in results if not r.get('name', '').strip()]
+                has_empty_names = len(players_with_empty_names) > 0
+                
+                # Display winner (only if all players have names)
                 if results:
                     winner = results[0]
-                    st.markdown(
-                        f'<div class="winner-banner">🏆 Winner: {winner["name"]} '
-                        f'(Net Score: {winner["net_score"]:.1f})</div>',
-                        unsafe_allow_html=True
-                    )
+                    if winner.get("name", "").strip():
+                        st.markdown(
+                            f'<div class="winner-banner">🏆 Winner: {winner["name"]} '
+                            f'(Net Score: {winner["net_score"]:.1f})</div>',
+                            unsafe_allow_html=True
+                        )
+                    elif not has_empty_names:
+                        # All names filled but winner name check failed (shouldn't happen)
+                        st.info("💡 Please enter player names above to see the winner.")
+                    else:
+                        st.info("💡 Please enter player names above to see the winner.")
                 
                 # Save to database
                 st.markdown("---")
                 st.subheader("💾 Save Scores")
                 
+                # Check if any players have empty names
+                if has_empty_names:
+                    st.error(f"⚠️ {len(players_with_empty_names)} players have missing names. Please click on the 'Enter player name...' cells in the table above and type the player names, then try saving again.")
+                    st.info("💡 **Tip:** Click directly on the 'Enter player name...' text in the Player column to edit it.")
+                    return
+                
                 # Match players to database
-                matched_players = match_ocr_players_to_existing(db, players, st.session_state.selected_league_id)
+                matched_players = match_ocr_players_to_existing(db, results, st.session_state.selected_league_id)
                 
                 # Check if all players are matched
                 unmatched = [m for m in matched_players if m['action'] == 'needs_team']
