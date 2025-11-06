@@ -5,8 +5,8 @@ A Python + Streamlit application that extracts player data from Golfzon-style go
 ## Features
 
 ### Core OCR Functionality
-- 📸 **Image Upload**: Upload screenshots of Golfzon scorecards (JPG, PNG)
-- 🔍 **OCR Processing**: Automatic text extraction using pytesseract
+- 📸 **Image Upload**: Upload screenshots of Golfzon scorecards (JPG, PNG, HEIC/HEIF)
+- 🔍 **OCR Processing**: Automatic text extraction using pytesseract with enhanced preprocessing
 - 📊 **Data Parsing**: Extracts player names, gross scores, and handicaps using regex
 - 🧮 **Net Score Calculation**: Calculates net scores based on handicap and number of holes
 - 🏆 **Winner Display**: Automatically identifies and displays the winner
