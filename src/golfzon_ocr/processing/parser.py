@@ -231,7 +231,7 @@ def parse_players(ocr_text: str, backup_ocr_text: str = None) -> List[Dict[str, 
                 name_positions.append((match.start() + score_end, match, pattern_desc))
         
         # Sort by distance from score and pick the closest
-        # Prioritize specific patterns over generic ones, but distance matters more
+        # Prioritize names that come AFTER the score (typical format: Score → Handicap → Name)
         if name_positions:
             # Define priority order (lower number = higher priority)
             priority_order = {'[el Beachy': 1, '[el FirstOrLast': 2, 'Tcdubs21': 3, '[Tl pattern': 4, '[el pattern': 5, 'Standard': 6}
@@ -240,16 +240,34 @@ def parse_players(ocr_text: str, backup_ocr_text: str = None) -> List[Dict[str, 
                 pos, match_obj, desc = pos_tuple
                 distance = abs(pos - score_start)
                 priority = priority_order.get(desc, 99)
+                is_after = pos > score_start  # Name comes after score
+                
+                # IMPORTANT: In Golfzon scorecards, the format is: Score → Handicap → Name
+                # So names AFTER scores should be strongly preferred over names BEFORE scores
+                # to avoid matching names from previous players
+                
+                # Strongly prefer names that come AFTER the score (within reasonable distance)
+                if is_after and distance < 100:
+                    # Names after score get high priority - multiply distance by 0.3 to make them much closer
+                    effective_distance = distance * 0.3
+                elif not is_after and distance < 50:
+                    # Names before score (likely from previous player) get lower priority
+                    # Multiply distance by 3.0 to penalize them heavily
+                    effective_distance = distance * 3.0
+                else:
+                    # For very far distances, use actual distance
+                    effective_distance = distance
+                
                 # For distances > 50, prioritize specific patterns heavily
                 # Specific patterns should always win over generic ones
                 if distance > 50:
                     # Specific patterns get much lower priority score
                     if desc in ['[el Beachy', '[el FirstOrLast', 'Tcdubs21', '[Tl pattern']:
-                        return (priority, distance)  # Specific patterns: priority first, then distance
+                        return (priority, effective_distance)  # Specific patterns: priority first, then distance
                     else:
-                        return (priority * 10000 + distance, priority)  # Generic patterns: much lower priority
+                        return (priority * 10000 + effective_distance, priority)  # Generic patterns: much lower priority
                 else:
-                    return (distance, priority)  # Close matches: distance first
+                    return (effective_distance, priority)  # Close matches: effective distance first
             
             name_positions.sort(key=sort_key)
             closest_match, match_obj, desc = name_positions[0]
@@ -312,16 +330,27 @@ def parse_players(ocr_text: str, backup_ocr_text: str = None) -> List[Dict[str, 
                     pos, match_obj, desc = pos_tuple
                     distance = abs(pos - score_start)
                     priority = priority_order.get(desc, 99)
+                    is_after = pos > score_start  # Name comes after score
+                    
+                    # IMPORTANT: In Golfzon scorecards, the format is: Score → Handicap → Name
+                    # Strongly prefer names that come AFTER the score
+                    if is_after and distance < 100:
+                        effective_distance = distance * 0.3
+                    elif not is_after and distance < 50:
+                        effective_distance = distance * 3.0
+                    else:
+                        effective_distance = distance
+                    
                     # For distances > 50, prioritize specific patterns heavily
                     # Specific patterns should always win over generic ones
                     if distance > 50:
                         # Specific patterns get much lower priority score
                         if desc in ['[el Beachy', '[el FirstOrLast', 'Tcdubs21', '[Tl pattern']:
-                            return (priority, distance)  # Specific patterns: priority first, then distance
+                            return (priority, effective_distance)  # Specific patterns: priority first, then distance
                         else:
-                            return (priority * 10000 + distance, priority)  # Generic patterns: much lower priority
+                            return (priority * 10000 + effective_distance, priority)  # Generic patterns: much lower priority
                     else:
-                        return (distance, priority)  # Close matches: distance first
+                        return (effective_distance, priority)  # Close matches: effective distance first
                 
                 filtered_positions.sort(key=sort_key)
                 closest_match, match_obj, desc = filtered_positions[0]
