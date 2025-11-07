@@ -140,16 +140,15 @@ def extract_text(image):
         # Handicap pattern: "+11.4" or "-2.2"
         score_pattern = re.compile(r'\d{2,3}\s*\([+\-]?\d+\)')
         handicap_pattern = re.compile(r'[+\-]\d+\.\d+')
-        name_pattern = re.compile(r'\b(Beachy|FirstOrLast|elBeachy|RQFirstOrLast|Acorm|Cjdyer|Lcrostarosa)\b', re.IGNORECASE)
         
         def score_quality(text):
-            """Score text quality: higher is better"""
+            """Score text quality based on golf-specific patterns"""
             score_matches = len(score_pattern.findall(text))
             handicap_matches = len(handicap_pattern.findall(text))
-            name_matches = len(name_pattern.findall(text))
             meaningful_chars = sum(1 for c in text if c.isalnum() or c in '()+-.,')
-            # Prioritize results with score/handicap patterns AND player names
-            return score_matches * 1000 + handicap_matches * 500 + name_matches * 200 + meaningful_chars
+            # Prioritize results with score and handicap patterns
+            # Score patterns are most important, followed by handicaps
+            return score_matches * 1000 + handicap_matches * 500 + meaningful_chars
         
         # Re-sort by quality score
         results.sort(key=lambda x: score_quality(x[0]), reverse=True)
@@ -159,26 +158,21 @@ def extract_text(image):
         backup_text = results[1][0] if len(results) > 1 else None
         
         # If we have multiple good results, try to combine them intelligently
-        # Prioritize combining results that have player names
+        # Prioritize combining results that have additional scores/handicaps
         if len(results) > 1:
             combined_text = text
             seen_lines = set(text.split('\n'))
-            # Look for results with player names that might be missing from the best result
+            # Look for results that might have missing data from the best result
             for result_text, char_count, psm, prep_name in results[1:6]:  # Check more results
                 if char_count > 20:  # Only combine if substantial
-                    # Check if this result has names not in the main result
-                    result_names = set(name_pattern.findall(result_text))
-                    main_names = set(name_pattern.findall(combined_text))
-                    has_new_names = bool(result_names - main_names)
-                    
-                    # Also check for scores/handicaps
+                    # Check for scores/handicaps
                     result_scores = score_pattern.findall(result_text)
                     result_handicaps = handicap_pattern.findall(result_text)
                     main_scores = score_pattern.findall(combined_text)
                     main_handicaps = handicap_pattern.findall(combined_text)
                     has_new_data = len(result_scores) > len(main_scores) or len(result_handicaps) > len(main_handicaps)
                     
-                    if has_new_names or has_new_data:
+                    if has_new_data:
                         # Add unique lines from this result
                         for line in result_text.split('\n'):
                             line_clean = line.strip()

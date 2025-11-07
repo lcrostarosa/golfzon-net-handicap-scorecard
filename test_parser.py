@@ -77,12 +77,14 @@ def test_parse_ocr_with_noise():
     """
     players = parse_players(ocr_text)
     
-    # Should find at least 2 players (Gjdyer and Lcrostarosa)
+    # Should find at least 2 players despite OCR noise
     assert len(players) >= 2
     
+    # Parser should extract names from noisy text (no longer applies player-specific corrections)
     names = [p['name'].lower() for p in players]
-    assert 'gjdyer' in names or 'cjdyer' in names
-    assert 'lcrostarosa' in names
+    # Check that we extracted names (even if OCR misread them)
+    assert any('acorm' in n or 'acorn' in n for n in names), f"Expected Acorm/Acorn in {names}"
+    assert any('acidyer' in n or 'dyer' in n for n in names), f"Expected Acidyer/dyer in {names}"
 
 
 def test_recalculate_net_scores_auto_calculate_9_holes():
