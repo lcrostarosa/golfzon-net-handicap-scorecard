@@ -1,0 +1,690 @@
+================================================================================
+OCR Image Testing
+================================================================================
+
+================================================================================
+Testing: test.jpeg
+================================================================================
+Image size: (1152, 1536), Mode: RGB
+
+--- Extracting text with OCR...
+
+--- Raw OCR Text (first 500 chars):
+eT
+
+=
+
+Gouzatf
+
+IPGA Wests Mountain)
+
+= =~
+
+eee emt
+
+=
+
+ishouAnaly
+
+vAnalysi3y
+
+score CStd)
+
+Statistics}
+
+=
+
+haovsgeGgovad
+
+la
+
+2
+
+2
+
+a
+
+ae
+
+Bay
+
+bag
+
+4
+
+BI BIaIS
+
+—
+
+[TlAcorm
+
+GIO 14) + tel
+
+B42) | -22
+
+_(s
+
+aes) |
+
++64
+
+2 _|Biciayer
+
+AGG
+
+Boe
+
+\ 3 _lBiconaresel
+
+as} 4 5)
+
+4347) 4 +14
+
++
+
+yi
+
+-
+
+—
+
+~
+
+ee en ens
+
+pe ee tte
+
+ee
+
+byeActI ena MEST TEAC SESS
+
+—
+
+eee
+
+pinae pee gec IY
+
+i <iclese
+
+ee
+
+a
+
+ae
+
+-
+
+he)
+
+ee
+
+ee
+
+a
+
+
+--- Parsing players...
+❌ No players found in OCR text
+
+--- Full OCR text for debugging:
+eT
+
+=
+
+Gouzatf
+
+IPGA Wests Mountain)
+
+= =~
+
+eee emt
+
+=
+
+ishouAnaly
+
+vAnalysi3y
+
+score CStd)
+
+Statistics}
+
+=
+
+haovsgeGgovad
+
+la
+
+2
+
+2
+
+a
+
+ae
+
+Bay
+
+bag
+
+4
+
+BI BIaIS
+
+—
+
+[TlAcorm
+
+GIO 14) + tel
+
+B42) | -22
+
+_(s
+
+aes) |
+
++64
+
+2 _|Biciayer
+
+AGG
+
+Boe
+
+\ 3 _lBiconaresel
+
+as} 4 5)
+
+4347) 4 +14
+
++
+
+yi
+
+-
+
+—
+
+~
+
+ee en ens
+
+pe ee tte
+
+ee
+
+byeActI ena MEST TEAC SESS
+
+—
+
+eee
+
+pinae pee gec IY
+
+i <iclese
+
+ee
+
+a
+
+ae
+
+-
+
+he)
+
+ee
+
+ee
+
+a
+
+
+================================================================================
+Found 3 PNG files in uploads/
+================================================================================
+
+================================================================================
+Testing: uploads/1.png
+================================================================================
+Image size: (2282, 1614), Mode: RGBA
+
+--- Extracting text with OCR...
+
+--- Raw OCR Text (first 500 chars):
+— Sydeahce | \
+ae eee { i oS Birarav Conmmany Culp reeatnee :
+bag PhocnhConntny ld | =),
+aa .
+. ¥ ues y EIN,
+‘ es Rowading Record || Shew/Anahysts TF BIS
+; . Teese At. cee en eee oe _— -—— ee kee ee : 1 . an
+: | iN | Se
+| 8 4 8.6 7:8 9: 8 eee
+3/4\4\8 = gg HB) lon | re
+| 4|4\4|3|4|3 po aaa a
+|-Sjeeon 1 EUG Pert a
+===s 4 | .
+3 |elBeachy 5 SMS | 4 @ | TL | aan HBS Wn
+| | |RQFirstOrLast 9 G nan | ceemeereoruare
+—- 1 i leas
+Seta ee AS
+AS BS eaes
+nes { Paes
+sa SEAT RSS
+= _ lowestiscored Dose aes
+TAS }
+... (truncated, total length: 931 chars)
+
+--- Parsing players...
+❌ No players found in OCR text
+
+--- Full OCR text for debugging:
+— Sydeahce | \
+ae eee { i oS Birarav Conmmany Culp reeatnee :
+bag PhocnhConntny ld | =),
+aa .
+. ¥ ues y EIN,
+‘ es Rowading Record || Shew/Anahysts TF BIS
+; . Teese At. cee en eee oe _— -—— ee kee ee : 1 . an
+: | iN | Se
+| 8 4 8.6 7:8 9: 8 eee
+3/4\4\8 = gg HB) lon | re
+| 4|4\4|3|4|3 po aaa a
+|-Sjeeon 1 EUG Pert a
+===s 4 | .
+3 |elBeachy 5 SMS | 4 @ | TL | aan HBS Wn
+| | |RQFirstOrLast 9 G nan | ceemeereoruare
+—- 1 i leas
+Seta ee AS
+AS BS eaes
+nes { Paes
+sa SEAT RSS
+= _ lowestiscored Dose aes
+TAS } : — OTE Sony SA RT Te Cent BO neo te hehe Sete
+Sey): es = FN I AS SOS Tan's PEs
+ee ST a EE Te Te  SA ee a han: Rees SO RSS I BG Stee Te WR at
+cept Fp SSE SESE CAR eas oe ee Se SPU SSSR a ep SENSE SEE Sh PE TTT ES ATEN IE OE SENT EY BES "
+panel Ba WF RPE Sete A SEU CAIN AS Set g Lagat Caer ay ae eens, St i ehiS REN INE a ag ORS SE A EN ae peel > :
+AT See 5 ah a ross MSM aR a ES rtisy Biss
+RSs Nem AICTE Fa Ss SER SEE age ET eno
+
+
+================================================================================
+Testing: uploads/2.png
+================================================================================
+Image size: (2066, 1456), Mode: RGBA
+
+--- Extracting text with OCR...
+
+--- Raw OCR Text (first 500 chars):
+———
+
+——
+
+—
+
+Q
+
+|
+
+peo ee eee
+
+eiteeqies
+
+N
+
+(ce TOI r¢é ON
+
+|
+
+ee eee
+
+_
+
+~
+
+Scorecard
+
+Roumneling Rage)
+
+SONA ALYSIS
+
+a i ey
+
+Se
+
+IN)
+
+po
+
+oe
+
+a
+
+£128 4648 67 8 O-
+
+a
+
+eq
+
+A
+
+BS)
+
+bin
+
+Par
+
+lIglajalsl|4@|3i4
+
+q
+
+5
+
+=
+
+42(+7)
+
++14.4
+
+2
+
+(Gl ek23
+
+Gl
+
+el + Ole) «fa
+
+--—
+
+39(+4)
+
++24
+
+i |
+
+[@] Kwiki
+
+BopBoeoooe
+
+47(+12)
+
++10.9
+
+| 3
+
+[(QJbird99
+
+eee
+
+ES Galea) TC
+
++
+
+—
+
+fof he
+
++
+
+im
+
+oT
+
+ie ea
+
+(i
+
+WW
+
+a
+
+a
+
+-
+
+_
+
+ae
+
+a
+
+wee
+
+oe
+
+Yettraditonalelsspolecound endralnomtnellowesuscoLey
+
+-—
+
+=
+
+a
+
+—-
+
+
+... (truncated, total length: 531 chars)
+
+--- Parsing players...
+✅ Found 1 players:
+  1. Kwiki - Score: 47, Handicap: 10.9
+
+--- Calculating net scores (9 holes)...
+
+--- Results (sorted by net score):
+  1. Kwiki: Gross=47, Handicap=10.9, Strokes=5.45, Net=41.55
+
+🏆 Winner: Kwiki (Net Score: 41.55)
+
+================================================================================
+Testing: uploads/3.png
+================================================================================
+Image size: (2408, 1284), Mode: RGBA
+
+--- Extracting text with OCR...
+
+--- Raw OCR Text (first 500 chars):
+——e:
+
+ane ne mnt
+
+Our F aol ~
+
+—
+
+—
+
+cence ee tt
+
+een ae apne et er ee EA See oe Ee ee ee
+
+SCOLECald!
+
+Stat
+
+SUGGS
+
+Rownrding Reeore
+
+Sot Analysts
+
+¥
+
+Total)
+
+fale
+
+£2838 468 67 8 9
+
+fh
+
+Rane
+
+4\4|4|3)\4) 3/4) 4)\9
+
+BS)
+
+Per
+
+=
+
+—
+
+== =>
+
++244
+
+F4(+F)
+
+2 J |G varesear eG
+
+WEE
+
+BiG@eice
+
+re
+
+Ga(t+?)
+
++9.4
+
+|
+
+[@lAddictong.. ia)
+
+lela) + | 5
+
+lle «ipa
+
+Gan™
+
+4
+
+|
+
+——
+
+r t
+
+FL
+
+77
+
+4
+
+4
+
+Lt
+
+
+--- Parsing players...
+❌ No players found in OCR text
+
+--- Full OCR text for debugging:
+——e:
+
+ane ne mnt
+
+Our F aol ~
+
+—
+
+—
+
+cence ee tt
+
+een ae apne et er ee EA See oe Ee ee ee
+
+SCOLECald!
+
+Stat
+
+SUGGS
+
+Rownrding Reeore
+
+Sot Analysts
+
+¥
+
+Total)
+
+fale
+
+£2838 468 67 8 9
+
+fh
+
+Rane
+
+4\4|4|3)\4) 3/4) 4)\9
+
+BS)
+
+Per
+
+=
+
+—
+
+== =>
+
++244
+
+F4(+F)
+
+2 J |G varesear eG
+
+WEE
+
+BiG@eice
+
+re
+
+Ga(t+?)
+
++9.4
+
+|
+
+[@lAddictong.. ia)
+
+lela) + | 5
+
+lle «ipa
+
+Gan™
+
+4
+
+|
+
+——
+
+r t
+
+FL
+
+77
+
+4
+
+4
+
+Lt
+
+
+================================================================================
+SUMMARY
+================================================================================
+Total files tested: 4
+Successfully processed: 4
+Total players found: 1
+
+--- Results by file:
+  ✅ test.jpeg: 0 players found
+  ✅ 1.png: 0 players found
+  ✅ 2.png: 1 players found
+  ✅ 3.png: 0 players found
