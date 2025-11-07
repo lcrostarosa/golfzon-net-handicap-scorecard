@@ -3,11 +3,21 @@ Name extraction module for finding player names in OCR text.
 """
 import re
 from typing import Optional, List, Tuple
+from sqlalchemy.orm import Session
 from .. import pattern_config
 
 
 class NameExtractor:
     """Extracts and cleans player names from OCR text."""
+    
+    def __init__(self, db: Optional[Session] = None):
+        """
+        Initialize the NameExtractor.
+        
+        Args:
+            db: Optional database session for applying learned corrections
+        """
+        self.db = db
     
     def find_closest_name(
         self, 
@@ -140,7 +150,18 @@ class NameExtractor:
         Returns:
             Cleaned name string
         """
-        return pattern_config.clean_name(name)
+        cleaned = pattern_config.clean_name(name)
+        
+        # Apply database corrections if available
+        if self.db:
+            try:
+                from ...db import apply_corrections_to_text
+                cleaned = apply_corrections_to_text(self.db, cleaned, pattern_type='name')
+            except Exception:
+                # If database corrections fail, just return the cleaned name
+                pass
+        
+        return cleaned
     
     def find_all_names(self, text: str) -> List[str]:
         """

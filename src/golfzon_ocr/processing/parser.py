@@ -7,16 +7,17 @@ This module provides a clean facade over the parsing pipeline:
 3. Validation and deduplication
 
 Public API:
-    - parse_players(ocr_text, backup_ocr_text) -> List[Dict]
+    - parse_players(ocr_text, backup_ocr_text, db) -> List[Dict]
     - clean_ocr_text(text) -> str (for backwards compatibility)
 """
-from typing import List, Dict
+from typing import List, Dict, Optional
+from sqlalchemy.orm import Session
 from .text_cleaner import TextCleaner
 from .matchers import ScoreMatcher, LineMatcher, TableMatcher
 from .validators import PlayerValidator
 
 
-def clean_ocr_text(text: str) -> str:
+def clean_ocr_text(text: str, db: Optional[Session] = None) -> str:
     """
     Clean OCR text to handle common misreads and noise.
     
@@ -24,17 +25,19 @@ def clean_ocr_text(text: str) -> str:
     
     Args:
         text: Raw OCR text
+        db: Optional database session for applying learned corrections
         
     Returns:
         Cleaned text string
     """
-    cleaner = TextCleaner()
+    cleaner = TextCleaner(db)
     return cleaner.clean(text)
 
 
 def parse_players(
     ocr_text: str,
-    backup_ocr_text: str = None  # noqa: ARG001 - kept for compatibility
+    backup_ocr_text: str = None,  # noqa: ARG001 - kept for compatibility
+    db: Optional[Session] = None
 ) -> List[Dict[str, any]]:
     """
     Parse player data from OCR text using multiple matching strategies.
@@ -48,6 +51,7 @@ def parse_players(
     Args:
         ocr_text: Raw OCR text string
         backup_ocr_text: Optional backup OCR text (currently unused, kept for compatibility)
+        db: Optional database session for applying learned corrections
         
     Returns:
         List of dictionaries with player data:
@@ -61,22 +65,22 @@ def parse_players(
         raise ValueError("OCR text is empty")
     
     # Step 1: Clean the OCR text
-    cleaner = TextCleaner()
+    cleaner = TextCleaner(db)
     cleaned_text = cleaner.clean(ocr_text)
     
     # Step 2: Apply multiple matching strategies
     all_players = []
     
     # Strategy 1: Score-based matching (find scores first, then names/handicaps)
-    score_matcher = ScoreMatcher()
+    score_matcher = ScoreMatcher(db)
     all_players.extend(score_matcher.find_players(cleaned_text))
     
     # Strategy 2: Line-by-line matching
-    line_matcher = LineMatcher()
+    line_matcher = LineMatcher(db)
     all_players.extend(line_matcher.find_players(cleaned_text))
     
     # Strategy 3: Table-based matching
-    table_matcher = TableMatcher()
+    table_matcher = TableMatcher(db)
     all_players.extend(table_matcher.find_players(cleaned_text))
     
     # Step 3: Validate, deduplicate, and add placeholders

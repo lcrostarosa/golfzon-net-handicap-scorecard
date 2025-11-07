@@ -3,12 +3,22 @@ Text cleaning module for OCR output.
 Handles noise removal and common OCR misreads using generic patterns.
 """
 import re
-from typing import List
+from typing import List, Optional
+from sqlalchemy.orm import Session
 from . import pattern_config
 
 
 class TextCleaner:
     """Cleans OCR text by removing noise and fixing common OCR errors."""
+    
+    def __init__(self, db: Optional[Session] = None):
+        """
+        Initialize the TextCleaner.
+        
+        Args:
+            db: Optional database session for applying learned corrections
+        """
+        self.db = db
     
     def clean(self, text: str) -> str:
         """
@@ -26,6 +36,10 @@ class TextCleaner:
         # Apply OCR character fixes
         text = pattern_config.apply_text_fixes(text)
         
+        # Apply database corrections if available
+        if self.db:
+            text = self._apply_db_corrections(text)
+        
         # Fix handicap patterns
         text = self._fix_handicap_patterns(text)
         
@@ -39,6 +53,23 @@ class TextCleaner:
         text = re.sub(r'[ \t]+', ' ', text)  # Only spaces/tabs, not newlines
         
         return text
+    
+    def _apply_db_corrections(self, text: str) -> str:
+        """
+        Apply learned corrections from the database.
+        
+        Args:
+            text: Text to apply corrections to
+            
+        Returns:
+            Corrected text
+        """
+        try:
+            from ..db import apply_corrections_to_text
+            return apply_corrections_to_text(self.db, text, pattern_type='name')
+        except Exception:
+            # If database corrections fail, just return the original text
+            return text
     
     def _remove_noise_lines(self, text: str) -> List[str]:
         """Remove lines that are mostly noise or special characters."""

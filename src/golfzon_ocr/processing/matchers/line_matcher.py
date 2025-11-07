@@ -16,16 +16,16 @@ class LineMatcher(BaseMatcher):
     
     # Regex patterns for matching player data on a line
     PATTERNS = [
-        # Complete match with decimal handicap (allow digits in names)
-        re.compile(r'([A-Za-z][A-Za-z0-9]{1,}).*?(\d{2,3})\(.*?([+\-]\d+\.\d+)', re.IGNORECASE),
+        # Complete match with decimal handicap (allow camelCase and digits in names)
+        re.compile(r'([A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)*).*?(\d{2,3})\(.*?([+\-]\d+\.\d+)', re.IGNORECASE),
         # Score with incomplete handicap (ends with .)
-        re.compile(r'([A-Za-z][A-Za-z0-9]{1,}).*?(\d{2,3})\(.*?([+\-]\d+\.)', re.IGNORECASE),
+        re.compile(r'([A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)*).*?(\d{2,3})\(.*?([+\-]\d+\.)', re.IGNORECASE),
         # Score without parentheses
-        re.compile(r'([A-Za-z][A-Za-z0-9]{1,}).*?(\d{2,3})\s+[+\-]?\d+\s+([+\-]\d+\.?\d*)', re.IGNORECASE),
+        re.compile(r'([A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)*).*?(\d{2,3})\s+[+\-]?\d+\s+([+\-]\d+\.?\d*)', re.IGNORECASE),
         # Very flexible - just name and numbers
-        re.compile(r'([A-Za-z][A-Za-z0-9]{1,}).*?(\d{2,3})\s*([+\-]\d+)', re.IGNORECASE),
+        re.compile(r'([A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)*).*?(\d{2,3})\s*([+\-]\d+)', re.IGNORECASE),
         # Score with parentheses, find handicap separately
-        re.compile(r'([A-Za-z][A-Za-z0-9]{1,}).*?(\d{2,3})\s*\([+\-]?\d+\)?', re.IGNORECASE),
+        re.compile(r'([A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)*).*?(\d{2,3})\s*\([+\-]?\d+\)?', re.IGNORECASE),
     ]
     
     def find_players(self, text: str) -> List[Dict[str, any]]:

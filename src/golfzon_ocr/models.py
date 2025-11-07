@@ -82,3 +82,19 @@ class WeeklyScore(Base):
     def __repr__(self):
         return f"<WeeklyScore(id={self.id}, player_id={self.player_id}, week={self.week_number}, net_score={self.net_score})>"
 
+
+class OcrCorrection(Base):
+    """OCR correction model for storing learned text corrections."""
+    __tablename__ = 'ocr_corrections'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ocr_text = Column(String(200), nullable=False, index=True)
+    corrected_text = Column(String(200), nullable=False)
+    pattern_type = Column(String(50), nullable=False, default='name')  # 'name', 'score', 'handicap'
+    frequency = Column(Integer, nullable=False, default=1)  # Number of times this correction has been used
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_used_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    def __repr__(self):
+        return f"<OcrCorrection(id={self.id}, '{self.ocr_text}' -> '{self.corrected_text}', freq={self.frequency})>"
+

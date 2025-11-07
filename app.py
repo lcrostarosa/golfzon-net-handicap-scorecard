@@ -17,7 +17,7 @@ except ImportError:
 from golfzon_ocr.processing import extract_text, parse_players, calculate_net_scores, recalculate_net_scores
 from golfzon_ocr.db import (
     get_db_context, create_league, get_league, list_leagues,
-    get_league_by_name, list_teams, create_team,
+    get_league_by_name, list_teams, create_team, create_correction,
     create_weekly_score, get_player_scores_by_week, get_all_weeks,
     get_top_two_scores_per_team, get_scores_by_week
 )
@@ -220,8 +220,12 @@ def _ocr_score_submission(db, league, week_number, num_holes):
                 with st.expander("Raw OCR Text", expanded=False):
                     st.text(ocr_text)
                 
-                # Parse player data
-                players = parse_players(ocr_text, backup_ocr_text=backup_ocr_text if 'backup_ocr_text' in locals() else None)
+                # Parse player data with database corrections
+                players = parse_players(
+                    ocr_text, 
+                    backup_ocr_text=backup_ocr_text if 'backup_ocr_text' in locals() else None,
+                    db=db
+                )
                 
                 if not players:
                     st.error("❌ No player data found in the image.")
@@ -232,6 +236,8 @@ def _ocr_score_submission(db, league, week_number, num_holes):
                     results = calculate_net_scores(players, num_holes)
                     st.session_state.original_results = results
                     st.session_state.current_results = results
+                    # Store OCR names for learning
+                    st.session_state.ocr_names = [p.get('name', '') for p in players]
                 else:
                     results = st.session_state.current_results
                 
@@ -293,6 +299,26 @@ def _ocr_score_submission(db, league, week_number, num_holes):
                 )
                 st.session_state.current_results = recalculated_results
                 results = recalculated_results
+                
+                # Learning system: Detect name corrections and store them
+                if hasattr(st.session_state, 'ocr_names') and hasattr(st.session_state, 'original_results'):
+                    learned_corrections = 0
+                    for i, edited_result in enumerate(edited_results):
+                        if i < len(st.session_state.original_results):
+                            original_name = st.session_state.original_results[i].get('name', '').strip()
+                            edited_name = edited_result.get('name', '').strip()
+                            
+                            # If the user changed a name, store it as a correction
+                            if original_name and edited_name and original_name != edited_name:
+                                try:
+                                    create_correction(db, original_name, edited_name, pattern_type='name')
+                                    learned_corrections += 1
+                                except Exception:
+                                    pass  # Silently ignore errors in learning
+                    
+                    # Show toast notification if corrections were learned
+                    if learned_corrections > 0:
+                        st.toast(f"✅ Learned {learned_corrections} name correction(s)!", icon="🎓")
                 
                 # Check for empty names after editing
                 players_with_empty_names = [r for r in results if not r.get('name', '').strip()]

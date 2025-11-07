@@ -2,16 +2,22 @@
 Base matcher class for player data extraction strategies.
 """
 from abc import ABC, abstractmethod
-from typing import List, Dict
+from typing import List, Dict, Optional
+from sqlalchemy.orm import Session
 from ..extractors import NameExtractor, ScoreExtractor, HandicapExtractor
 
 
 class BaseMatcher(ABC):
     """Abstract base class for player data matching strategies."""
     
-    def __init__(self):
-        """Initialize extractors used by matchers."""
-        self.name_extractor = NameExtractor()
+    def __init__(self, db: Optional[Session] = None):
+        """
+        Initialize extractors used by matchers.
+        
+        Args:
+            db: Optional database session for applying learned corrections
+        """
+        self.name_extractor = NameExtractor(db)
         self.score_extractor = ScoreExtractor()
         self.handicap_extractor = HandicapExtractor()
     

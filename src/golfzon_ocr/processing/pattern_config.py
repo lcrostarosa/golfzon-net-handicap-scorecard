@@ -34,14 +34,13 @@ OCR_TEXT_FIXES: List[Tuple[str, str, int]] = [
     (r'[|_\s]+$', '', re.MULTILINE),  # Trailing pipes/underscores
 ]
 
-# Name cleaning patterns - remove OCR artifacts and prefixes
+# Name cleaning patterns - remove only generic OCR artifacts
 # Format: (pattern, replacement, flags)
+# Note: Player-specific corrections are now stored in the database
 NAME_CLEANING_PATTERNS: List[Tuple[str, str, int]] = [
     (r'[\[|\]|\|\\_]', '', 0),  # Remove brackets, pipes, underscores
     (r'^[0-9]+', '', 0),  # Remove leading numbers
     (r'^[|_]+', '', 0),  # Remove leading pipes/underscores
-    (r'^[a-z]([A-Z][a-z]+)', r'\1', 0),  # "eBeachy" -> "Beachy"
-    (r'^[RQ]([A-Z][a-z]+)', r'\1', 0),  # "RQFirstOrLast" -> "FirstOrLast"
     (r'^Tl', '', 0),  # Remove "Tl" OCR artifact prefix
     (r'^G\s*', '', 0),  # Remove "G" prefix (common in Golfzon scorecards)
 ]
@@ -61,9 +60,9 @@ EXCLUDE_WORDS: Set[str] = {
 # Name pattern matching order (by priority)
 # Each pattern should extract the name in group(1) where applicable
 NAME_PATTERNS: List[Tuple[str, Pattern]] = [
-    # Allow digits in names (e.g., "Player1", "Tcdubs21")
-    ('standard', re.compile(r'([A-Z][a-z0-9]{2,})(?:\s|$|[|])')),
-    ('table_format', re.compile(r'\|.*?([A-Z][a-z0-9]{2,}).*?\|')),
+    # Allow camelCase (e.g., "FirstOrLast") and digits (e.g., "Player1", "Tcdubs21")
+    ('standard', re.compile(r'([A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)*)(?:\s|$|[|])')),
+    ('table_format', re.compile(r'\|.*?([A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)*).*?\|')),
 ]
 
 # Score patterns
