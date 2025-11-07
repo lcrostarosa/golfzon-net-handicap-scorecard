@@ -73,22 +73,25 @@ def test_1png_net_score_calculation():
     firstorlast_result = next((r for r in results if 'first' in r.get('name', '').lower()), None)
     cdubs_result = next((r for r in results if not r.get('name', '').strip() or 'dub' in r.get('name', '').lower()), None)
     
-    # Verify net score calculations
-    # Beachy: 43 - (12.4/2) = 43 - 6.2 = 36.8, net to par = 36.8 - 35 = +1.8
+    # Verify net score calculations (with rounding)
+    # Beachy: handicap 12.4 → 12, strokes = 6, net = 43 - 6 = 37, net to par = 37 - 35 = +2
     assert beachy_result is not None
-    assert abs(beachy_result['net_score'] - 36.8) < 0.1
-    assert abs((beachy_result['net_score'] - par) - 1.8) < 0.1
+    assert beachy_result['net_score'] == 37
+    assert beachy_result['strokes_given'] == 6
+    assert (beachy_result['net_score'] - par) == 2
     
-    # FirstOrLast: 40 - (10.3/2) = 40 - 5.15 = 34.85, net to par = 34.85 - 35 = -0.15 ≈ 0
+    # FirstOrLast: handicap 10.3 → 10, strokes = 5, net = 40 - 5 = 35, net to par = 35 - 35 = 0
     assert firstorlast_result is not None
-    assert abs(firstorlast_result['net_score'] - 34.85) < 0.1
-    assert abs((firstorlast_result['net_score'] - par)) < 0.2  # ≈ 0
+    assert firstorlast_result['net_score'] == 35
+    assert firstorlast_result['strokes_given'] == 5
+    assert (firstorlast_result['net_score'] - par) == 0
     
-    # Cdubs21: 44 - (18.2/2) = 44 - 9.1 = 34.9, net to par = 34.9 - 35 = -0.1 ≈ 0
+    # Cdubs21: handicap 18.2 → 18, strokes = 9, net = 44 - 9 = 35, net to par = 35 - 35 = 0
     assert cdubs_result is not None
-    assert abs(cdubs_result['net_score'] - 34.9) < 0.1
-    assert abs((cdubs_result['net_score'] - par)) < 0.2  # ≈ 0
+    assert cdubs_result['net_score'] == 35
+    assert cdubs_result['strokes_given'] == 9
+    assert (cdubs_result['net_score'] - par) == 0
     
-    # Net scores relative to par should be approximately: +2, 0, 0 (when rounded)
-    # User mentioned +7, 0, 0 - this might refer to a different metric or rounding
+    # Net scores relative to par: +2, 0, 0
+
 

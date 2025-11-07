@@ -9,8 +9,11 @@ def calculate_net_scores(players: List[Dict[str, any]], num_holes: int = 9) -> L
     """
     Calculate net scores for each player based on their handicap.
     
-    For 9-hole rounds: strokes_given = handicap / 2
-    For 18-hole rounds: strokes_given = handicap
+    Handicaps are rounded to nearest integer first, then:
+    - For 9-hole rounds: strokes_given = round(handicap / 2)
+    - For 18-hole rounds: strokes_given = round(handicap)
+    
+    Net score is also rounded to nearest integer.
     
     Args:
         players: List of player dictionaries with "name", "gross_score", "handicap"
@@ -45,25 +48,28 @@ def calculate_net_scores(players: List[Dict[str, any]], num_holes: int = 9) -> L
             if gross_score < 1 or gross_score > 200:
                 continue
             
+            # Round handicap to nearest integer first
+            rounded_handicap = round(handicap)
+            
             # Calculate strokes given based on number of holes
             if num_holes == 9:
-                strokes_given = handicap / 2
+                strokes_given = round(rounded_handicap / 2)
             elif num_holes == 18:
-                strokes_given = handicap
+                strokes_given = rounded_handicap
             else:
                 # Default to 9-hole calculation for other values
-                strokes_given = handicap / 2
+                strokes_given = round(rounded_handicap / 2)
             
-            # Calculate net score
-            net_score = gross_score - strokes_given
+            # Calculate net score and round to nearest integer
+            net_score = round(gross_score - strokes_given)
             
             # Create result dictionary with all fields
             result = {
                 "name": str(player["name"]),
                 "gross_score": gross_score,
-                "handicap": handicap,
-                "strokes_given": math.ceil(strokes_given * 100) / 100,  # Round up to 2 decimal places
-                "net_score": math.ceil(net_score * 100) / 100  # Round up to 2 decimal places
+                "handicap": handicap,  # Keep original handicap for display
+                "strokes_given": strokes_given,  # Now an integer
+                "net_score": net_score  # Now an integer
             }
             
             results.append(result)
@@ -87,6 +93,12 @@ def recalculate_net_scores(players: List[Dict[str, any]], num_holes: int = 9, au
     
     This function is used when players have already been calculated and may have
     manual edits to handicap, gross_score, or strokes_given.
+    
+    Handicaps are rounded to nearest integer first, then:
+    - For 9-hole rounds: strokes_given = round(handicap / 2)
+    - For 18-hole rounds: strokes_given = round(handicap)
+    
+    Net score is also rounded to nearest integer.
     
     Args:
         players: List of player dictionaries with "name", "gross_score", "handicap", 
@@ -126,28 +138,31 @@ def recalculate_net_scores(players: List[Dict[str, any]], num_holes: int = 9, au
             
             # Calculate or use existing strokes_given
             if auto_calculate_strokes or "strokes_given" not in player:
+                # Round handicap to nearest integer first
+                rounded_handicap = round(handicap)
+                
                 # Calculate strokes given based on number of holes
                 if num_holes == 9:
-                    strokes_given = handicap / 2
+                    strokes_given = round(rounded_handicap / 2)
                 elif num_holes == 18:
-                    strokes_given = handicap
+                    strokes_given = rounded_handicap
                 else:
                     # Default to 9-hole calculation for other values
-                    strokes_given = handicap / 2
+                    strokes_given = round(rounded_handicap / 2)
             else:
-                # Use existing strokes_given value (manual edit)
-                strokes_given = float(player["strokes_given"])
+                # Use existing strokes_given value (manual edit), round to integer
+                strokes_given = round(float(player["strokes_given"]))
             
-            # Calculate net score
-            net_score = gross_score - strokes_given
+            # Calculate net score and round to nearest integer
+            net_score = round(gross_score - strokes_given)
             
             # Create result dictionary with all fields
             result = {
                 "name": str(player["name"]),
                 "gross_score": gross_score,
-                "handicap": handicap,
-                "strokes_given": math.ceil(strokes_given * 100) / 100,  # Round up to 2 decimal places
-                "net_score": math.ceil(net_score * 100) / 100  # Round up to 2 decimal places
+                "handicap": handicap,  # Keep original handicap for display
+                "strokes_given": strokes_given,  # Now an integer
+                "net_score": net_score  # Now an integer
             }
             
             results.append(result)

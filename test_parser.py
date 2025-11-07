@@ -49,15 +49,18 @@ def test_calculate_net_scores_9_holes():
     assert gjdyer is not None
     assert lcrostarosa is not None
     
-    # Verify calculations
-    assert acorn['strokes_given'] == -1.1
-    assert abs(acorn['net_score'] - 39.1) < 0.01
+    # Verify calculations (with rounding)
+    # Acorn: -2.2 → -2, strokes = -1, net = 38 - (-1) = 39
+    assert acorn['strokes_given'] == -1
+    assert acorn['net_score'] == 39
     
-    assert abs(gjdyer['strokes_given'] - 8.05) < 0.01
-    assert abs(gjdyer['net_score'] - 32.95) < 0.01
+    # Gjdyer: 16.1 → 16, strokes = 8, net = 41 - 8 = 33
+    assert gjdyer['strokes_given'] == 8
+    assert gjdyer['net_score'] == 33
     
-    assert lcrostarosa['strokes_given'] == 5.7
-    assert abs(lcrostarosa['net_score'] - 37.3) < 0.01
+    # Lcrostarosa: 11.4 → 11, strokes = 6, net = 43 - 6 = 37
+    assert lcrostarosa['strokes_given'] == 6
+    assert lcrostarosa['net_score'] == 37
     
     # Verify sorting (lowest net score first)
     assert results[0]['net_score'] <= results[1]['net_score']
@@ -65,7 +68,7 @@ def test_calculate_net_scores_9_holes():
     
     # Gjdyer should be the winner
     assert results[0]['name'] == 'Gjdyer'
-    assert abs(results[0]['net_score'] - 32.95) < 0.01
+    assert results[0]['net_score'] == 33
 
 
 def test_parse_ocr_with_noise():
@@ -104,12 +107,14 @@ def test_recalculate_net_scores_auto_calculate_9_holes():
     assert acorn is not None
     assert gjdyer is not None
     
-    # With auto_calculate, strokes should be calculated from handicap
-    assert acorn['strokes_given'] == -1.1  # -2.2 / 2
-    assert abs(acorn['net_score'] - 39.1) < 0.01  # 38 - (-1.1)
+    # With auto_calculate, strokes should be calculated from handicap (with rounding)
+    # Acorn: -2.2 → -2, strokes = -1, net = 38 - (-1) = 39
+    assert acorn['strokes_given'] == -1
+    assert acorn['net_score'] == 39
     
-    assert abs(gjdyer['strokes_given'] - 8.05) < 0.01  # 16.1 / 2
-    assert abs(gjdyer['net_score'] - 32.95) < 0.01  # 41 - 8.05
+    # Gjdyer: 16.1 → 16, strokes = 8, net = 41 - 8 = 33
+    assert gjdyer['strokes_given'] == 8
+    assert gjdyer['net_score'] == 33
 
 
 def test_recalculate_net_scores_auto_calculate_18_holes():
@@ -129,12 +134,14 @@ def test_recalculate_net_scores_auto_calculate_18_holes():
     assert acorn is not None
     assert gjdyer is not None
     
-    # With auto_calculate for 18 holes, strokes = handicap
-    assert abs(acorn['strokes_given'] - (-2.2)) < 0.01
-    assert abs(acorn['net_score'] - 78.2) < 0.01  # 76 - (-2.2)
+    # With auto_calculate for 18 holes, strokes = rounded handicap
+    # Acorn: -2.2 → -2, strokes = -2, net = 76 - (-2) = 78
+    assert acorn['strokes_given'] == -2
+    assert acorn['net_score'] == 78
     
-    assert abs(gjdyer['strokes_given'] - 16.1) < 0.01
-    assert abs(gjdyer['net_score'] - 65.9) < 0.01  # 82 - 16.1
+    # Gjdyer: 16.1 → 16, strokes = 16, net = 82 - 16 = 66
+    assert gjdyer['strokes_given'] == 16
+    assert gjdyer['net_score'] == 66
 
 
 def test_recalculate_net_scores_manual_strokes():
@@ -154,12 +161,12 @@ def test_recalculate_net_scores_manual_strokes():
     assert acorn is not None
     assert gjdyer is not None
     
-    # With manual strokes, should use the provided strokes_given
-    assert acorn['strokes_given'] == -2.0
-    assert abs(acorn['net_score'] - 40.0) < 0.01  # 38 - (-2.0)
+    # With manual strokes, should use the provided strokes_given (rounded)
+    assert acorn['strokes_given'] == -2
+    assert acorn['net_score'] == 40  # 38 - (-2)
     
-    assert gjdyer['strokes_given'] == 7.5
-    assert abs(gjdyer['net_score'] - 33.5) < 0.01  # 41 - 7.5
+    assert gjdyer['strokes_given'] == 8  # 7.5 rounded to 8
+    assert gjdyer['net_score'] == 33  # 41 - 8
 
 
 def test_recalculate_net_scores_edited_values():
@@ -186,13 +193,15 @@ def test_recalculate_net_scores_edited_values():
     assert acorn is not None
     assert gjdyer is not None
     
-    # Acorn's strokes should be recalculated from new handicap
-    assert acorn['strokes_given'] == -1.5  # -3.0 / 2
-    assert abs(acorn['net_score'] - 39.5) < 0.01  # 38 - (-1.5)
+    # Acorn's strokes should be recalculated from new handicap (with rounding)
+    # -3.0 → -3, strokes = -2, net = 38 - (-2) = 40
+    assert acorn['strokes_given'] == -2
+    assert acorn['net_score'] == 40
     
     # Gjdyer's net score should reflect new gross_score
-    assert abs(gjdyer['strokes_given'] - 8.05) < 0.01
-    assert abs(gjdyer['net_score'] - 31.95) < 0.01  # 40 - 8.05
+    # 16.1 → 16, strokes = 8, net = 40 - 8 = 32
+    assert gjdyer['strokes_given'] == 8
+    assert gjdyer['net_score'] == 32
 
 
 def test_recalculate_net_scores_sorting():
@@ -211,9 +220,9 @@ def test_recalculate_net_scores_sorting():
     assert results[0]['net_score'] <= results[1]['net_score']
     assert results[1]['net_score'] <= results[2]['net_score']
     
-    # Player2 should win (40 - 2.5 = 37.5)
+    # Player2 should win (5.0 → 5, strokes = 2, 40 - 2 = 38)
     assert results[0]['name'] == 'Player2'
-    assert abs(results[0]['net_score'] - 37.5) < 0.01
+    assert results[0]['net_score'] == 38
 
 
 def test_recalculate_net_scores_auto_calculate_overrides_manual():
@@ -227,9 +236,10 @@ def test_recalculate_net_scores_auto_calculate_overrides_manual():
     assert len(results) == 1
     acorn = results[0]
     
-    # Should ignore manual strokes_given (999.0) and calculate from handicap
-    assert acorn['strokes_given'] == -1.1  # -2.2 / 2
-    assert abs(acorn['net_score'] - 39.1) < 0.01
+    # Should ignore manual strokes_given (999.0) and calculate from handicap (with rounding)
+    # -2.2 → -2, strokes = -1, net = 38 - (-1) = 39
+    assert acorn['strokes_given'] == -1
+    assert acorn['net_score'] == 39
 
 
 def test_recalculate_net_scores_no_strokes_given():
@@ -243,8 +253,9 @@ def test_recalculate_net_scores_no_strokes_given():
     assert len(results) == 1
     acorn = results[0]
     
-    # Should calculate strokes_given even when auto_calculate=False if missing
-    assert acorn['strokes_given'] == -1.1  # -2.2 / 2
+    # Should calculate strokes_given even when auto_calculate=False if missing (with rounding)
+    # -2.2 → -2, strokes = -1
+    assert acorn['strokes_given'] == -1
 
 
 def test_recalculate_net_scores_invalid_data():
