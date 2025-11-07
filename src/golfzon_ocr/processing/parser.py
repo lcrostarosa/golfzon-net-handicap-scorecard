@@ -2,7 +2,7 @@
 Parser module for extracting player data from OCR text.
 """
 import re
-from typing import List, Dict
+from typing import List, Dict, Optional, Tuple
 
 
 def clean_ocr_text(text: str) -> str:
@@ -978,4 +978,222 @@ def process_match(match, exclude_words, seen_names, players):
         
     except (ValueError, IndexError, TypeError):
         return False
+
+
+def extract_hole_scores(ocr_text: str, num_holes: int = 9) -> Dict[str, List[Optional[int]]]:
+    """
+    Extract hole-by-hole scores from OCR text.
+    
+    Golfzon scorecards typically show a table with:
+    - Header row with hole numbers (1-9 or 1-18)
+    - Par row
+    - Player rows with their scores for each hole
+    
+    Args:
+        ocr_text: Raw OCR text string
+        num_holes: Number of holes to extract (9 or 18)
+        
+    Returns:
+        Dictionary mapping player names to their hole scores:
+        {"PlayerName": [4, 5, 3, ...], ...}
+        None values indicate holes where score couldn't be extracted.
+    """
+    hole_scores = {}
+    
+    # Clean the OCR text first
+    text = clean_ocr_text(ocr_text)
+    
+    # Split into lines for analysis
+    lines = text.split('\n')
+    
+    # Pattern to match player names (same as in parse_players)
+    # Look for lines that contain a player name followed by numbers
+    player_name_patterns = [
+        r'([A-Z][a-z]{2,})',  # Standard capitalized names
+        r'\[el\s+([A-Z][a-z]+)',  # [el Beachy pattern
+        r'[Tt]([Cc]dubs\d+)',  # Tcdubs21 pattern
+        r'\[Tl([A-Z][a-z]{2,})',  # [Tl pattern
+    ]
+    
+    # Look for table-like structures with player names and scores
+    # Pattern: name followed by multiple single-digit or 2-digit numbers
+    # Example: "Beachy 4 4 4 5 6 6 6 6 7" or "Beachy | 4 | 4 | 4 | 5 |"
+    
+    for line in lines:
+        # Skip header lines (Hole, Par, Rank, etc.)
+        if any(keyword in line.lower() for keyword in ['hole', 'par', 'rank', 'total', 'g-hcp', 'golfzon']):
+            continue
+        
+        # Try to find player names in this line
+        player_name = None
+        for pattern in player_name_patterns:
+            match = re.search(pattern, line)
+            if match:
+                potential_name = match.group(1) if match.groups() else match.group(0)
+                # Clean name
+                potential_name = re.sub(r'[\[|\]|\|\\_]', '', potential_name)
+                potential_name = re.sub(r'^[a-z]([A-Z][a-z]+)', r'\1', potential_name)  # "eBeachy" -> "Beachy"
+                potential_name = potential_name.strip()
+                
+                # Validate name (at least 2 chars, not a common word)
+                exclude_words = {'in', 'out', 'round', 'mountain', 'west', 'pga', 
+                                 'scorecard', 'statistics', 'rounding', 'record', 'shot', 'analysis'}
+                if len(potential_name) >= 2 and potential_name.lower() not in exclude_words:
+                    player_name = potential_name
+                    break
+        
+        if not player_name:
+            continue
+        
+        # Extract all single-digit and 2-digit numbers from the line (potential hole scores)
+        # Golf scores are typically 1-9 per hole, but can be higher
+        # Look for numbers that are separated by spaces, pipes, or other delimiters
+        # Use a more specific pattern to avoid matching year numbers or large totals
+        
+        # Remove the player name from the line first
+        line_without_name = re.sub(re.escape(player_name), '', line, count=1)
+        
+        # Also remove any total scores (2-3 digit numbers in parentheses like "43(+7)")
+        line_without_name = re.sub(r'\d{2,3}\s*\([+\-]?\d+\)', '', line_without_name)
+        
+        # Also remove handicaps (e.g., "+11.4" or "-2.2")
+        line_without_name = re.sub(r'[+\-]\d+\.\d+', '', line_without_name)
+        
+        # Extract individual hole scores (1-2 digit numbers)
+        # Look for numbers that are likely hole scores (1-15 typically)
+        score_matches = re.findall(r'\b(\d{1,2})\b', line_without_name)
+        
+        # Filter out numbers that are too large to be hole scores (e.g., totals, years)
+        # Golf hole scores are typically 1-12, but allow up to 15 for very bad holes
+        hole_score_candidates = []
+        for score_str in score_matches:
+            score = int(score_str)
+            if 1 <= score <= 15:
+                hole_score_candidates.append(score)
+        
+        # Only add if we found a reasonable number of scores
+        # For 9 holes, expect 8-10 numbers (some might be extra)
+        # For 18 holes, expect 16-20 numbers
+        expected_min = num_holes - 1
+        expected_max = num_holes + 2
+        
+        if expected_min <= len(hole_score_candidates) <= expected_max:
+            # Take only the first num_holes scores
+            player_scores = hole_score_candidates[:num_holes]
+            
+            # Pad with None if we have fewer than num_holes
+            while len(player_scores) < num_holes:
+                player_scores.append(None)
+            
+            hole_scores[player_name] = player_scores
+    
+    # Alternative approach: Look for structured table data
+    # Golfzon scorecards often have a clear table structure
+    # Try to find the table header with hole numbers
+    
+    # Look for a line with sequential numbers 1-9 or 1-18
+    hole_header_pattern = r'1\s+2\s+3\s+4\s+5\s+6\s+7\s+8\s+9'
+    hole_header_match = re.search(hole_header_pattern, text)
+    
+    if hole_header_match and not hole_scores:
+        # Found hole header, now look for player rows below it
+        # Find the line index where the header appears
+        header_line_idx = -1
+        for idx, line in enumerate(lines):
+            if re.search(hole_header_pattern, line):
+                header_line_idx = idx
+                break
+        
+        if header_line_idx >= 0:
+            # Process the next few lines after the header
+            # Skip the Par row and look for player rows
+            for line_idx in range(header_line_idx + 1, min(header_line_idx + 10, len(lines))):
+                line = lines[line_idx]
+                
+                # Skip Par row
+                if 'par' in line.lower():
+                    continue
+                
+                # Look for player names
+                player_name = None
+                for pattern in player_name_patterns:
+                    match = re.search(pattern, line)
+                    if match:
+                        potential_name = match.group(1) if match.groups() else match.group(0)
+                        potential_name = re.sub(r'[\[|\]|\|\\_]', '', potential_name)
+                        potential_name = re.sub(r'^[a-z]([A-Z][a-z]+)', r'\1', potential_name)
+                        potential_name = potential_name.strip()
+                        
+                        if len(potential_name) >= 2:
+                            player_name = potential_name
+                            break
+                
+                if player_name:
+                    # Extract scores from this line
+                    line_without_name = re.sub(re.escape(player_name), '', line, count=1)
+                    line_without_name = re.sub(r'\d{2,3}\s*\([+\-]?\d+\)', '', line_without_name)
+                    line_without_name = re.sub(r'[+\-]\d+\.\d+', '', line_without_name)
+                    
+                    score_matches = re.findall(r'\b(\d{1,2})\b', line_without_name)
+                    hole_score_candidates = [int(s) for s in score_matches if 1 <= int(s) <= 15]
+                    
+                    if len(hole_score_candidates) >= num_holes - 1:
+                        player_scores = hole_score_candidates[:num_holes]
+                        while len(player_scores) < num_holes:
+                            player_scores.append(None)
+                        hole_scores[player_name] = player_scores
+    
+    return hole_scores
+
+
+def parse_players_with_holes(ocr_text: str, backup_ocr_text: str = None, num_holes: int = 9) -> Tuple[List[Dict[str, any]], Dict[str, List[Optional[int]]]]:
+    """
+    Parse player data AND hole-by-hole scores from OCR text.
+    
+    Returns both the player summaries and the detailed hole scores.
+    
+    Args:
+        ocr_text: Raw OCR text string
+        backup_ocr_text: Optional backup OCR text for fallback matching
+        num_holes: Number of holes (9 or 18)
+        
+    Returns:
+        Tuple of (players, hole_scores):
+        - players: List of player dictionaries with totals
+        - hole_scores: Dict mapping player names to hole score lists
+    """
+    # Get player summaries (existing function)
+    players = parse_players(ocr_text, backup_ocr_text)
+    
+    # Get hole-by-hole scores
+    hole_scores = extract_hole_scores(ocr_text, num_holes)
+    
+    # Try to match hole scores to players
+    # Match by name similarity
+    matched_hole_scores = {}
+    for player in players:
+        player_name = player.get('name', '').strip()
+        if not player_name:
+            continue
+        
+        # Look for exact match first
+        if player_name in hole_scores:
+            matched_hole_scores[player_name] = hole_scores[player_name]
+        else:
+            # Look for partial match (case-insensitive)
+            player_name_lower = player_name.lower()
+            for hole_name, scores in hole_scores.items():
+                hole_name_lower = hole_name.lower()
+                if player_name_lower in hole_name_lower or hole_name_lower in player_name_lower:
+                    matched_hole_scores[player_name] = scores
+                    break
+    
+    # For players without matched hole scores, create empty arrays
+    for player in players:
+        player_name = player.get('name', '').strip()
+        if player_name and player_name not in matched_hole_scores:
+            # Create empty hole scores (all None)
+            matched_hole_scores[player_name] = [None] * num_holes
+    
+    return players, matched_hole_scores
 

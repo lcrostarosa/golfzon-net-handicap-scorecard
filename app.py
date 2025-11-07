@@ -14,7 +14,7 @@ except ImportError:
     # pillow-heif not installed, HEIC files won't be supported
     pass
 
-from golfzon_ocr.processing import extract_text, parse_players, calculate_net_scores, recalculate_net_scores
+from golfzon_ocr.processing import extract_text, parse_players, calculate_net_scores, recalculate_net_scores, parse_players_with_holes, recalculate_from_hole_scores
 from golfzon_ocr.db import (
     get_db_context, create_league, get_league, list_leagues,
     get_league_by_name, list_teams, create_team,
@@ -61,6 +61,10 @@ def initialize_session_state():
         st.session_state.current_results = None
     if 'current_image_id' not in st.session_state:
         st.session_state.current_image_id = None
+    if 'hole_scores' not in st.session_state:
+        st.session_state.hole_scores = None
+    if 'original_hole_scores' not in st.session_state:
+        st.session_state.original_hole_scores = None
 
 
 def league_selection_sidebar():
@@ -171,6 +175,8 @@ def _ocr_score_submission(db, league, week_number, num_holes):
             st.session_state.current_image_id = current_file_id
             st.session_state.original_results = None
             st.session_state.current_results = None
+            st.session_state.hole_scores = None
+            st.session_state.original_hole_scores = None
     
     if uploaded_file is not None:
         # Display uploaded image
@@ -220,8 +226,12 @@ def _ocr_score_submission(db, league, week_number, num_holes):
                 with st.expander("Raw OCR Text", expanded=False):
                     st.text(ocr_text)
                 
-                # Parse player data
-                players = parse_players(ocr_text, backup_ocr_text=backup_ocr_text if 'backup_ocr_text' in locals() else None)
+                # Parse player data WITH hole scores
+                players, hole_scores_dict = parse_players_with_holes(
+                    ocr_text, 
+                    backup_ocr_text=backup_ocr_text if 'backup_ocr_text' in locals() else None,
+                    num_holes=num_holes
+                )
                 
                 if not players:
                     st.error("❌ No player data found in the image.")
@@ -232,8 +242,11 @@ def _ocr_score_submission(db, league, week_number, num_holes):
                     results = calculate_net_scores(players, num_holes)
                     st.session_state.original_results = results
                     st.session_state.current_results = results
+                    st.session_state.hole_scores = hole_scores_dict
+                    st.session_state.original_hole_scores = hole_scores_dict
                 else:
                     results = st.session_state.current_results
+                    hole_scores_dict = st.session_state.hole_scores
                 
                 # Display results
                 st.header("📊 Results")
@@ -293,6 +306,152 @@ def _ocr_score_submission(db, league, week_number, num_holes):
                 )
                 st.session_state.current_results = recalculated_results
                 results = recalculated_results
+                
+                # === HOLE-BY-HOLE SCORES EDITOR ===
+                st.markdown("---")
+                st.subheader("⛳ Hole-by-Hole Scores")
+                st.info("💡 Edit individual hole scores below. The gross score will automatically recalculate.")
+                
+                # Check if we have hole scores data
+                if hole_scores_dict:
+                    # Create a DataFrame for hole scores with players as rows and holes as columns
+                    hole_data = []
+                    for result in results:
+                        player_name = result.get('name', '').strip()
+                        if not player_name:
+                            player_name = "Enter player name..."
+                        
+                        # Get hole scores for this player
+                        player_hole_scores = hole_scores_dict.get(result.get('name', ''), [None] * num_holes)
+                        
+                        # Create row: Player name + holes 1-9 (or 1-18)
+                        row_data = {'Player': player_name}
+                        for hole_idx in range(num_holes):
+                            hole_num = hole_idx + 1
+                            score = player_hole_scores[hole_idx] if hole_idx < len(player_hole_scores) else None
+                            row_data[f'H{hole_num}'] = score if score is not None else 0
+                        hole_data.append(row_data)
+                    
+                    # Create DataFrame
+                    df_holes = pd.DataFrame(hole_data)
+                    
+                    # Configure columns
+                    hole_column_config = {
+                        "Player": st.column_config.TextColumn("Player", disabled=True, width="medium")
+                    }
+                    
+                    for hole_idx in range(num_holes):
+                        hole_num = hole_idx + 1
+                        hole_column_config[f'H{hole_num}'] = st.column_config.NumberColumn(
+                            f"{hole_num}",
+                            min_value=1,
+                            max_value=15,
+                            step=1,
+                            width="small"
+                        )
+                    
+                    # Display hole scores editor
+                    edited_holes_df = st.data_editor(
+                        df_holes,
+                        column_config=hole_column_config,
+                        use_container_width=True,
+                        hide_index=True,
+                        key=f"holes_editor_{num_holes}_{auto_calculate_strokes}"
+                    )
+                    
+                    # Update hole scores in session state
+                    updated_hole_scores = {}
+                    for idx, row in edited_holes_df.iterrows():
+                        # Get the original player name from results
+                        player_name = results[idx].get('name', '').strip()
+                        if player_name or idx < len(results):
+                            # Extract hole scores from row
+                            scores = []
+                            for hole_idx in range(num_holes):
+                                hole_num = hole_idx + 1
+                                score = row.get(f'H{hole_num}')
+                                if pd.isna(score) or score == 0:
+                                    scores.append(None)
+                                else:
+                                    scores.append(int(score))
+                            
+                            # Use original player name or "Enter player name..." for key
+                            key_name = player_name if player_name else f"player_{idx}"
+                            updated_hole_scores[key_name] = scores
+                    
+                    st.session_state.hole_scores = updated_hole_scores
+                    
+                    # Recalculate gross scores from hole scores and update results
+                    recalculated_from_holes = []
+                    for idx, result in enumerate(results):
+                        player_name = result.get('name', '').strip()
+                        key_name = player_name if player_name else f"player_{idx}"
+                        
+                        if key_name in updated_hole_scores:
+                            hole_scores = updated_hole_scores[key_name]
+                            # Recalculate gross score from holes
+                            recalc_result = recalculate_from_hole_scores(
+                                player_name if player_name else "",
+                                hole_scores,
+                                result.get('handicap', 0.0),
+                                num_holes,
+                                auto_calculate_strokes=auto_calculate_strokes,
+                                strokes_given=result.get('strokes_given')
+                            )
+                            recalculated_from_holes.append(recalc_result)
+                        else:
+                            # Keep original result
+                            recalculated_from_holes.append(result)
+                    
+                    # Sort by net score
+                    recalculated_from_holes.sort(key=lambda x: x.get('net_score', 999))
+                    st.session_state.current_results = recalculated_from_holes
+                    results = recalculated_from_holes
+                else:
+                    st.info("ℹ️ No hole-by-hole scores detected from OCR. You can manually enter scores in the table below if needed.")
+                    
+                    # Create empty hole scores editor
+                    hole_data = []
+                    for result in results:
+                        player_name = result.get('name', '').strip()
+                        if not player_name:
+                            player_name = "Enter player name..."
+                        
+                        # Create row with empty scores
+                        row_data = {'Player': player_name}
+                        for hole_idx in range(num_holes):
+                            hole_num = hole_idx + 1
+                            row_data[f'H{hole_num}'] = 0
+                        hole_data.append(row_data)
+                    
+                    df_holes = pd.DataFrame(hole_data)
+                    
+                    # Configure columns
+                    hole_column_config = {
+                        "Player": st.column_config.TextColumn("Player", disabled=True, width="medium")
+                    }
+                    
+                    for hole_idx in range(num_holes):
+                        hole_num = hole_idx + 1
+                        hole_column_config[f'H{hole_num}'] = st.column_config.NumberColumn(
+                            f"{hole_num}",
+                            min_value=1,
+                            max_value=15,
+                            step=1,
+                            width="small"
+                        )
+                    
+                    # Display hole scores editor
+                    edited_holes_df = st.data_editor(
+                        df_holes,
+                        column_config=hole_column_config,
+                        use_container_width=True,
+                        hide_index=True,
+                        key=f"holes_editor_manual_{num_holes}_{auto_calculate_strokes}"
+                    )
+                
+                st.markdown("---")
+                # === END HOLE-BY-HOLE SCORES EDITOR ===
                 
                 # Check for empty names after editing
                 players_with_empty_names = [r for r in results if not r.get('name', '').strip()]
