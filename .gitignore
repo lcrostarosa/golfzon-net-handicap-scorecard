@@ -29,11 +29,5 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Environment files
+.gcloud-key.json
 .env
-.env.local
-.env.*.local
-
-# Logs
-*.log
-logs/
