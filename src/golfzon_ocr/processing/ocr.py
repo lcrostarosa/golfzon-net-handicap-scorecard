@@ -104,8 +104,8 @@ def _clean_total(s: str) -> str:
     """Clean OCR total score like 44048) -> 44(+8)."""
     # Pre-clean common OCR substitutions
     s = s.replace('I', '1').replace('l', '1').replace('O', '0').replace('o', '0')
-    s = s.replace('a', '4').replace('e', '4').replace('s', '5').replace('S', '5')
-    s = s.replace('G', '6').replace('g', '9').replace('B', '8')
+    s = s.replace('a', '4').replace('e', '1').replace('s', '5').replace('S', '5')
+    s = s.replace('G', '6').replace('g', '9').replace('B', '8').replace('q', '9')
     
     # Try exact pattern: DD(+D) or DD(D)
     m = re.search(r'(\d{2})\s*\(\s*[+\-]?\s*(\d)\s*\)', s)
