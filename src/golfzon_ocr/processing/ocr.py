@@ -52,6 +52,22 @@ def extract_text(image):
             # If CLAHE fails, use the grayscale image directly
             enhanced = gray
         
+        # Additional preprocessing to handle Golfzon scorecard formatting
+        # (circles around birdies, boxes around bogeys, etc.)
+        try:
+            # Apply binary threshold to clean up circles/boxes
+            _, thresh = cv2.threshold(enhanced, 180, 255, cv2.THRESH_BINARY)
+            
+            # Morphological operations to remove thin lines (circles/boxes)
+            kernel = np.ones((2, 2), np.uint8)
+            cleaned = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+            
+            # Use cleaned version for OCR
+            enhanced = cleaned
+        except Exception:
+            # If preprocessing fails, continue with CLAHE-enhanced version
+            pass
+        
         # Use pytesseract to extract text
         # PSM 6 works best for our table format
         custom_config = r'--oem 3 --psm 6'
