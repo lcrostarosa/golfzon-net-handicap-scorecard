@@ -1,11 +1,16 @@
 """
 OCR module for extracting text from Golfzon scorecard images.
+
+Supports two backends:
+- Tesseract (free, local) - use extract_text() or extract_columns()
+- Google Vision (cloud, more accurate) - use extract_with_google_vision()
 """
 import pytesseract
 from PIL import Image
 import cv2
 import numpy as np
 import re
+import os
 from typing import List, Dict, Tuple, Optional
 
 
@@ -244,3 +249,136 @@ def extract_text(image):
     except Exception as e:
         raise Exception(f"Error processing image: {str(e)}")
 
+
+
+def extract_with_google_vision(image) -> Dict[str, List[str]]:
+    """
+    Extract player data using Google Cloud Vision API.
+    
+    Much more accurate than Tesseract for complex scorecard layouts.
+    Requires GOOGLE_APPLICATION_CREDENTIALS env var or .gcloud-key.json file.
+    
+    Args:
+        image: PIL Image object
+        
+    Returns:
+        Dict with 'names', 'totals', 'handicaps' lists
+    """
+    try:
+        from google.cloud import vision
+    except ImportError:
+        raise ImportError("google-cloud-vision not installed. Run: pip install google-cloud-vision")
+    
+    # Set credentials from .env or local file if not already set
+    if not os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'):
+        local_key = os.path.join(os.path.dirname(__file__), '..', '..', '..', '.gcloud-key.json')
+        if os.path.exists(local_key):
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = local_key
+    
+    # Convert PIL Image to bytes
+    import io
+    buffer = io.BytesIO()
+    image.save(buffer, format='JPEG')
+    content = buffer.getvalue()
+    
+    # Call Google Vision API
+    client = vision.ImageAnnotatorClient()
+    gv_image = vision.Image(content=content)
+    response = client.text_detection(image=gv_image)
+    
+    if response.error.message:
+        raise Exception(f"Google Vision API error: {response.error.message}")
+    
+    if not response.text_annotations:
+        return {'names': [], 'totals': [], 'handicaps': []}
+    
+    # Parse the full text
+    full_text = response.text_annotations[0].description
+    
+    # Extract player data using regex
+    names = []
+    totals = []
+    handicaps = []
+    
+    lines = full_text.split('\n')
+    
+    # Words to exclude (UI elements, headers, etc.)
+    exclude_words = {
+        'score', 'card', 'statistics', 'rounding', 'record', 'shot', 'analysis',
+        'stroke', 'tijeras', 'creek', 'hole', 'total', 'rank', 'par', 'close',
+        'play', 'traditional', 'round', 'golfzon', 'ghcp', 'g-hcp'
+    }
+    
+    # Known player name patterns (can be extended)
+    name_patterns = [
+        r'G?\s*([A-Z][a-z]{3,})',  # Capitalized words 4+ chars
+    ]
+    
+    # Look for score patterns: DD(+D) or DD(+DD)
+    score_pattern = r'(\d{2})\s*\(\s*[+\-]?\s*(\d{1,2})\s*\)'
+    
+    # Look for handicap patterns: +/-D.D or +/-DD.D
+    handicap_pattern = r'([+\-]\d{1,2}\.\d)'
+    
+    for line in lines:
+        # Check for name
+        for pattern in name_patterns:
+            m = re.search(pattern, line)
+            if m:
+                name = m.group(1).strip()
+                if name and name.lower() not in exclude_words and name not in names:
+                    names.append(name)
+        
+        # Check for score
+        m = re.search(score_pattern, line)
+        if m:
+            totals.append(f"{m.group(1)}(+{m.group(2)})")
+        
+        # Check for handicap
+        m = re.search(handicap_pattern, line)
+        if m:
+            handicaps.append(m.group(1))
+    
+    return {
+        'names': names,
+        'totals': totals,
+        'handicaps': handicaps
+    }
+
+
+def extract_text_google_vision(image) -> str:
+    """
+    Extract raw text using Google Cloud Vision API.
+    
+    Args:
+        image: PIL Image object
+        
+    Returns:
+        str: Full extracted text
+    """
+    try:
+        from google.cloud import vision
+    except ImportError:
+        raise ImportError("google-cloud-vision not installed. Run: pip install google-cloud-vision")
+    
+    # Set credentials
+    if not os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'):
+        local_key = os.path.join(os.path.dirname(__file__), '..', '..', '..', '.gcloud-key.json')
+        if os.path.exists(local_key):
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = local_key
+    
+    import io
+    buffer = io.BytesIO()
+    image.save(buffer, format='JPEG')
+    content = buffer.getvalue()
+    
+    client = vision.ImageAnnotatorClient()
+    gv_image = vision.Image(content=content)
+    response = client.text_detection(image=gv_image)
+    
+    if response.error.message:
+        raise Exception(f"Google Vision API error: {response.error.message}")
+    
+    if response.text_annotations:
+        return response.text_annotations[0].description
+    return ""
