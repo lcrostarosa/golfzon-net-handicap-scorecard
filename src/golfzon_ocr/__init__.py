@@ -10,6 +10,7 @@ from . import db
 from . import processing
 from . import services
 from . import export
+from . import config
 
 __all__ = [
     'models',
@@ -17,4 +18,5 @@ __all__ = [
     'processing',
     'services',
     'export',
+    'config',
 ]

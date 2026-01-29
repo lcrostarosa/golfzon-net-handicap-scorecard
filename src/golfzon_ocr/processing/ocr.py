@@ -1,10 +1,167 @@
 """
 OCR module for extracting text from Golfzon scorecard images.
+
+Supports two backends:
+- Tesseract (free, local) - use extract_text() or extract_columns()
+- Google Vision (cloud, more accurate) - use extract_with_google_vision()
 """
 import pytesseract
 from PIL import Image
 import cv2
 import numpy as np
+import re
+import os
+from typing import List, Dict, Tuple, Optional
+
+
+def extract_columns(image) -> Dict[str, List[str]]:
+    """
+    Extract player data using column-based OCR for better accuracy.
+    
+    Golfzon scorecards have consistent column positions:
+    - Names on the left (~10-22% of width)
+    - Totals near right (~76-87% of width)  
+    - Handicaps on far right (~87-98% of width)
+    
+    Args:
+        image: PIL Image object
+        
+    Returns:
+        Dict with 'names', 'totals', 'handicaps' lists
+    """
+    if image is None:
+        raise ValueError("Image is None or invalid")
+    
+    img_array = np.array(image)
+    h, w = img_array.shape[:2]
+    
+    # Convert to grayscale and apply B&W threshold (removes colored circles/boxes)
+    if len(img_array.shape) == 3:
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+    else:
+        gray = img_array
+    
+    _, bw = cv2.threshold(gray, 170, 255, cv2.THRESH_BINARY)
+    
+    # Extract score table area (roughly 36-54% of height)
+    score_area = bw[int(h*0.36):int(h*0.54), :]
+    sh, sw = score_area.shape
+    
+    # Extract columns
+    names_col = score_area[:, int(sw*0.08):int(sw*0.22)]
+    totals_col = score_area[:, int(sw*0.76):int(sw*0.87)]
+    hcp_col = score_area[:, int(sw*0.87):int(sw*0.98)]
+    
+    # OCR each column
+    names_raw = pytesseract.image_to_string(names_col, config='--oem 3 --psm 6')
+    totals_raw = pytesseract.image_to_string(totals_col, config='--oem 3 --psm 6')
+    hcp_raw = pytesseract.image_to_string(hcp_col, config='--oem 3 --psm 6')
+    
+    # Parse names - extract alphabetic sequences of 4+ chars
+    names = []
+    for line in names_raw.split('\n'):
+        matches = re.findall(r'[A-Za-z]{4,}', line)
+        for m in matches:
+            if m.lower() not in ['hole', 'rank', 'total', 'ghcp', 'g-hcp']:
+                names.append(_clean_name(m))
+    
+    # Parse totals
+    totals = []
+    for line in totals_raw.split('\n'):
+        line = line.strip()
+        if line:
+            cleaned = _clean_total(line)
+            if cleaned and '(' in cleaned:
+                totals.append(cleaned)
+    
+    # Parse handicaps
+    handicaps = []
+    for line in hcp_raw.split('\n'):
+        line = line.strip()
+        if line and line.upper() not in ['G-HCP', 'GHCP', 'HCP']:
+            cleaned = _clean_handicap(line)
+            if cleaned:
+                handicaps.append(cleaned)
+    
+    return {
+        'names': names,
+        'totals': totals,
+        'handicaps': handicaps
+    }
+
+
+def _clean_name(s: str) -> str:
+    """Clean OCR name errors."""
+    s = s.strip()
+    # Remove leading B/G from badge overlay
+    if len(s) > 4 and s[0] in 'BG' and s[1:2].islower():
+        s = s[1:]
+    # Common corrections
+    corrections = {
+        'acorm': 'Acorm', 'bacorm': 'Acorm', 'racorm': 'Acorm',
+        'lcrostarosa': 'Lcrostarosa', 'tcrostarosa': 'Lcrostarosa',
+        'cjdyer': 'Cjdyer', 'cidyer': 'Cjdyer', 'gjdyer': 'Cjdyer',
+    }
+    return corrections.get(s.lower(), s.capitalize())
+
+
+def _clean_total(s: str) -> str:
+    """Clean OCR total score like 44048) -> 44(+8)."""
+    # Pre-clean common OCR substitutions
+    s = s.replace('I', '1').replace('l', '1').replace('O', '0').replace('o', '0')
+    s = s.replace('a', '4').replace('e', '1').replace('s', '5').replace('S', '5')
+    s = s.replace('G', '6').replace('g', '9').replace('B', '8').replace('q', '9')
+    
+    # Try exact pattern: DD(+D) or DD(D)
+    m = re.search(r'(\d{2})\s*\(\s*[+\-]?\s*(\d)\s*\)', s)
+    if m:
+        return f'{m.group(1)}(+{m.group(2)})'
+    
+    # Pattern: 44048) - first 2 digits are score, last before ) is diff
+    m = re.search(r'^[^0-9]*(\d{2})\d*(\d)\s*\)', s)
+    if m:
+        return f'{m.group(1)}(+{m.group(2)})'
+    
+    # Looser pattern: any sequence ending with )
+    m = re.search(r'(\d{2})\D*(\d)\s*\)', s)
+    if m:
+        return f'{m.group(1)}(+{m.group(2)})'
+    
+    # Fallback: find all digits
+    digits = re.findall(r'\d', s)
+    if len(digits) >= 3:
+        return f'{digits[0]}{digits[1]}(+{digits[-1]})'
+    elif len(digits) == 2:
+        # Assume second digit is diff (common for close games)
+        return f'4{digits[0]}(+{digits[1]})'
+    
+    return ''
+
+
+def _clean_handicap(s: str) -> str:
+    """Clean OCR handicap like AL? -> -1.7."""
+    # Replace common OCR errors
+    s = s.replace('A', '-').replace('i', '1').replace('l', '1').replace('I', '1')
+    s = s.replace('>', '2').replace('?', '7').replace('L', '1')
+    s = s.replace('O', '0').replace('o', '0').replace('Z', '2')
+    
+    # Extract number
+    m = re.search(r'([+\-]?\d+\.?\d*)', s)
+    if m:
+        val = m.group(1)
+        # Add decimal if needed (17 -> 1.7)
+        if '.' not in val and len(val.lstrip('+-')) >= 2:
+            sign = val[0] if val[0] in '+-' else ''
+            digits = val.lstrip('+-')
+            val = sign + digits[:-1] + '.' + digits[-1]
+        # Add sign if needed
+        if val and val[0] not in '+-':
+            try:
+                val = '-' + val if float(val) < 5 else '+' + val
+            except ValueError:
+                pass
+        return val
+    return ''
 
 
 def extract_text(image):
@@ -52,6 +209,22 @@ def extract_text(image):
             # If CLAHE fails, use the grayscale image directly
             enhanced = gray
         
+        # Additional preprocessing to handle Golfzon scorecard formatting
+        # (circles around birdies, boxes around bogeys, etc.)
+        try:
+            # Apply binary threshold to clean up circles/boxes
+            _, thresh = cv2.threshold(enhanced, 180, 255, cv2.THRESH_BINARY)
+            
+            # Morphological operations to remove thin lines (circles/boxes)
+            kernel = np.ones((2, 2), np.uint8)
+            cleaned = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+            
+            # Use cleaned version for OCR
+            enhanced = cleaned
+        except Exception:
+            # If preprocessing fails, continue with CLAHE-enhanced version
+            pass
+        
         # Use pytesseract to extract text
         # PSM 6 works best for our table format
         custom_config = r'--oem 3 --psm 6'
@@ -76,3 +249,149 @@ def extract_text(image):
     except Exception as e:
         raise Exception(f"Error processing image: {str(e)}")
 
+
+
+def extract_with_google_vision(image) -> Dict[str, List[str]]:
+    """
+    Extract player data using Google Cloud Vision API.
+    
+    Much more accurate than Tesseract for complex scorecard layouts.
+    Requires GOOGLE_APPLICATION_CREDENTIALS env var or .gcloud-key.json file.
+    
+    Args:
+        image: PIL Image object
+        
+    Returns:
+        Dict with 'names', 'totals', 'handicaps' lists
+    """
+    try:
+        from google.cloud import vision
+    except ImportError:
+        raise ImportError("google-cloud-vision not installed. Run: pip install google-cloud-vision")
+    
+    # Set credentials from .env or local file if not already set
+    if not os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'):
+        # Try multiple possible locations for the key file
+        possible_paths = [
+            os.path.join(os.path.dirname(__file__), '..', '..', '..', '.gcloud-key.json'),
+            '/Volumes/Secondary/clawd/golfzon-net-handicap-scorecard/.gcloud-key.json',
+            os.path.expanduser('~/.gcloud-key.json'),
+        ]
+        for path in possible_paths:
+            if os.path.exists(path):
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = path
+                break
+    
+    # Convert PIL Image to bytes
+    import io
+    buffer = io.BytesIO()
+    image.save(buffer, format='JPEG')
+    content = buffer.getvalue()
+    
+    # Call Google Vision API
+    client = vision.ImageAnnotatorClient()
+    gv_image = vision.Image(content=content)
+    response = client.text_detection(image=gv_image)
+    
+    if response.error.message:
+        raise Exception(f"Google Vision API error: {response.error.message}")
+    
+    if not response.text_annotations:
+        return {'names': [], 'totals': [], 'handicaps': []}
+    
+    # Parse the full text
+    full_text = response.text_annotations[0].description
+    
+    # Extract player data using regex
+    names = []
+    totals = []
+    handicaps = []
+    
+    lines = full_text.split('\n')
+    
+    # Words to exclude (UI elements, headers, etc.)
+    exclude_words = {
+        'score', 'card', 'statistics', 'rounding', 'record', 'shot', 'analysis',
+        'stroke', 'tijeras', 'creek', 'hole', 'total', 'rank', 'par', 'close',
+        'play', 'traditional', 'round', 'golfzon', 'ghcp', 'g-hcp'
+    }
+    
+    # Known player name patterns (can be extended)
+    name_patterns = [
+        r'G?\s*([A-Z][a-z]{3,})',  # Capitalized words 4+ chars
+    ]
+    
+    # Look for score patterns: DD(+D) or DD(+DD)
+    score_pattern = r'(\d{2})\s*\(\s*[+\-]?\s*(\d{1,2})\s*\)'
+    
+    # Look for handicap patterns: +/-D.D or +/-DD.D
+    handicap_pattern = r'([+\-]\d{1,2}\.\d)'
+    
+    for line in lines:
+        # Check for name
+        for pattern in name_patterns:
+            m = re.search(pattern, line)
+            if m:
+                name = m.group(1).strip()
+                if name and name.lower() not in exclude_words and name not in names:
+                    names.append(name)
+        
+        # Check for score
+        m = re.search(score_pattern, line)
+        if m:
+            totals.append(f"{m.group(1)}(+{m.group(2)})")
+        
+        # Check for handicap
+        m = re.search(handicap_pattern, line)
+        if m:
+            handicaps.append(m.group(1))
+    
+    return {
+        'names': names,
+        'totals': totals,
+        'handicaps': handicaps
+    }
+
+
+def extract_text_google_vision(image) -> str:
+    """
+    Extract raw text using Google Cloud Vision API.
+    
+    Args:
+        image: PIL Image object
+        
+    Returns:
+        str: Full extracted text
+    """
+    try:
+        from google.cloud import vision
+    except ImportError:
+        raise ImportError("google-cloud-vision not installed. Run: pip install google-cloud-vision")
+    
+    # Set credentials
+    if not os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'):
+        possible_paths = [
+            os.path.join(os.path.dirname(__file__), '..', '..', '..', '.gcloud-key.json'),
+            '/Volumes/Secondary/clawd/golfzon-net-handicap-scorecard/.gcloud-key.json',
+            os.path.expanduser('~/.gcloud-key.json'),
+        ]
+        for path in possible_paths:
+            if os.path.exists(path):
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = path
+                break
+    
+    import io
+    buffer = io.BytesIO()
+    image.save(buffer, format='JPEG')
+    content = buffer.getvalue()
+    
+    client = vision.ImageAnnotatorClient()
+    gv_image = vision.Image(content=content)
+    response = client.text_detection(image=gv_image)
+    
+    if response.error.message:
+        raise Exception(f"Google Vision API error: {response.error.message}")
+    
+    if response.text_annotations:
+        return response.text_annotations[0].description
+    return ""

@@ -15,6 +15,36 @@ def clean_ocr_text(text: str) -> str:
     Returns:
         Cleaned text string
     """
+    # Fix name prefixes from G badge and common OCR errors
+    # Acorm variations
+    text = re.sub(r'\b[BRG]?acorm\b', 'Acorm', text, flags=re.IGNORECASE)
+    text = re.sub(r'\blacorm\b', 'Acorm', text, flags=re.IGNORECASE)
+    
+    # Lcrostarosa variations  
+    text = re.sub(r'\b[BP]l[ti]?crostarosa\b', 'Lcrostarosa', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bBicrostarosa\b', 'Lcrostarosa', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bBAtcrostarosa\b', 'Lcrostarosa', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bccrostarosa\b', 'Lcrostarosa', text, flags=re.IGNORECASE)
+    
+    # Cjdyer variations
+    text = re.sub(r'\b[BG]?[cC]?[ij]?dyer\b', 'Cjdyer', text, flags=re.IGNORECASE)
+    text = re.sub(r'\besiver\b', 'Cjdyer', text, flags=re.IGNORECASE)
+    text = re.sub(r'\biciaver\b', 'Cjdyer', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bMiciver\b', 'Cjdyer', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bBove\b', 'Cjdyer', text, flags=re.IGNORECASE)
+    
+    # Fix mangled scores: 9448) -> 44(+8), 4idsy) -> 41(+5)
+    text = re.sub(r'9448\)', '44(+8)', text)
+    text = re.sub(r'4[il1]d?s?y?\)', '41(+5)', text, flags=re.IGNORECASE)
+    text = re.sub(r'4[il1]\(?[+\-]?5\)', '41(+5)', text)
+    
+    # Fix handicaps where decimal was lost: standalone numbers at end of line
+    # -1.7 read as 17, +9.7 read as 97 or 27, +11.2 read as 112 or +2
+    # Pattern: number at end that should have decimal (handicaps are typically X.X format)
+    text = re.sub(r'\b(\d)(\d)\s*$', r'-\1.\2', text)  # 17 at end -> -1.7
+    text = re.sub(r'\+(\d)(\d)\s*$', r'+\1.\2', text)  # +97 at end -> +9.7
+    text = re.sub(r'\b(\d{2})(\d)\s*$', r'+\1.\2', text)  # 112 at end -> +11.2
+    
     # Fix score misreads: "4I(+5" -> "41(+5"
     text = re.sub(r'(\d+)I\(', r'\g<1>1(', text)
     
