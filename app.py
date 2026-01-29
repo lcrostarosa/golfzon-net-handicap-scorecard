@@ -14,7 +14,7 @@ except ImportError:
     # pillow-heif not installed, HEIC files won't be supported
     pass
 
-from golfzon_ocr.processing import extract_text, parse_players, calculate_net_scores, recalculate_net_scores
+from golfzon_ocr.processing import extract_text, extract_with_google_vision, parse_players, calculate_net_scores, recalculate_net_scores
 from golfzon_ocr.db import (
     get_db_context, create_league, get_league, list_leagues,
     get_league_by_name, list_teams, create_team,
@@ -195,33 +195,70 @@ def _ocr_score_submission(db, league, week_number, num_holes):
         # Process the image
         with st.spinner("Processing image with OCR..."):
             try:
-                # Extract text using OCR
-                ocr_text = extract_text(image)
-                
-                # Backup OCR
+                # Try Google Vision first (more accurate), fall back to Tesseract
                 try:
-                    import pytesseract
-                    import cv2
-                    import numpy as np
-                    img_array = np.array(image)
-                    if len(img_array.shape) == 3:
-                        img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
-                    gray = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
+                    result = extract_with_google_vision(image)
+                    ocr_text = f"Names: {result['names']}\nTotals: {result['totals']}\nHandicaps: {result['handicaps']}"
+                    
+                    # Build players directly from Google Vision results
+                    players = []
+                    for i in range(len(result['names'])):
+                        name = result['names'][i]
+                        if i < len(result['totals']):
+                            import re
+                            total_match = re.search(r'(\d+)\([+\-]?(\d+)\)', result['totals'][i])
+                            if total_match:
+                                gross_score = int(total_match.group(1))
+                            else:
+                                gross_score = 0
+                        else:
+                            gross_score = 0
+                        if i < len(result['handicaps']):
+                            try:
+                                handicap = float(result['handicaps'][i])
+                            except ValueError:
+                                handicap = 0.0
+                        else:
+                            handicap = 0.0
+                        players.append({
+                            'name': name,
+                            'gross_score': gross_score,
+                            'handicap': handicap
+                        })
+                    
+                    # Show raw OCR text
+                    with st.expander("Google Vision OCR Results", expanded=False):
+                        st.text(ocr_text)
+                        
+                except Exception as gv_error:
+                    st.warning(f"Google Vision unavailable ({gv_error}), using Tesseract...")
+                    # Fall back to Tesseract
+                    ocr_text = extract_text(image)
+                    
+                    # Backup OCR
                     try:
-                        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-                        enhanced = clahe.apply(gray)
+                        import pytesseract
+                        import cv2
+                        import numpy as np
+                        img_array = np.array(image)
+                        if len(img_array.shape) == 3:
+                            img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+                        gray = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
+                        try:
+                            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                            enhanced = clahe.apply(gray)
+                        except Exception:
+                            enhanced = gray
+                        backup_ocr_text = pytesseract.image_to_string(enhanced, config=r'--oem 3 --psm 11')
                     except Exception:
-                        enhanced = gray
-                    backup_ocr_text = pytesseract.image_to_string(enhanced, config=r'--oem 3 --psm 11')
-                except Exception:
-                    backup_ocr_text = None
-                
-                # Show raw OCR text
-                with st.expander("Raw OCR Text", expanded=False):
-                    st.text(ocr_text)
-                
-                # Parse player data
-                players = parse_players(ocr_text, backup_ocr_text=backup_ocr_text if 'backup_ocr_text' in locals() else None)
+                        backup_ocr_text = None
+                    
+                    # Show raw OCR text
+                    with st.expander("Raw OCR Text", expanded=False):
+                        st.text(ocr_text)
+                    
+                    # Parse player data
+                    players = parse_players(ocr_text, backup_ocr_text=backup_ocr_text if 'backup_ocr_text' in locals() else None)
                 
                 if not players:
                     st.error("❌ No player data found in the image.")

@@ -12,9 +12,11 @@ services:
       - DATABASE_URL=postgresql://golfzon_user:golfzon_pass@db:5432/golfzon_db
       - ENVIRONMENT=development
       - LOG_LEVEL=DEBUG
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/.gcloud-key.json
     volumes:
       - ./:/app
       - ./data:/app/data
+      - ./.gcloud-key.json:/app/.gcloud-key.json:ro
     depends_on:
       - db
     restart: unless-stopped

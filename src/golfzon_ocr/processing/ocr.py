@@ -271,9 +271,16 @@ def extract_with_google_vision(image) -> Dict[str, List[str]]:
     
     # Set credentials from .env or local file if not already set
     if not os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'):
-        local_key = os.path.join(os.path.dirname(__file__), '..', '..', '..', '.gcloud-key.json')
-        if os.path.exists(local_key):
-            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = local_key
+        # Try multiple possible locations for the key file
+        possible_paths = [
+            os.path.join(os.path.dirname(__file__), '..', '..', '..', '.gcloud-key.json'),
+            '/Volumes/Secondary/clawd/golfzon-net-handicap-scorecard/.gcloud-key.json',
+            os.path.expanduser('~/.gcloud-key.json'),
+        ]
+        for path in possible_paths:
+            if os.path.exists(path):
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = path
+                break
     
     # Convert PIL Image to bytes
     import io
@@ -363,9 +370,15 @@ def extract_text_google_vision(image) -> str:
     
     # Set credentials
     if not os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'):
-        local_key = os.path.join(os.path.dirname(__file__), '..', '..', '..', '.gcloud-key.json')
-        if os.path.exists(local_key):
-            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = local_key
+        possible_paths = [
+            os.path.join(os.path.dirname(__file__), '..', '..', '..', '.gcloud-key.json'),
+            '/Volumes/Secondary/clawd/golfzon-net-handicap-scorecard/.gcloud-key.json',
+            os.path.expanduser('~/.gcloud-key.json'),
+        ]
+        for path in possible_paths:
+            if os.path.exists(path):
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = path
+                break
     
     import io
     buffer = io.BytesIO()

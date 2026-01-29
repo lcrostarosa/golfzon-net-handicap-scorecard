@@ -38,8 +38,11 @@ def calculate_net_scores(players: List[Dict[str, any]], num_holes: int = 9) -> L
             continue
         
         try:
-            handicap = float(player["handicap"])
+            handicap_raw = float(player["handicap"])
             gross_score = int(player["gross_score"])
+            
+            # Round handicap to nearest whole number (standard golf practice)
+            handicap = round(handicap_raw)
             
             # Validate score ranges
             if gross_score < 1 or gross_score > 200:
@@ -53,6 +56,9 @@ def calculate_net_scores(players: List[Dict[str, any]], num_holes: int = 9) -> L
             else:
                 # Default to 9-hole calculation for other values
                 strokes_given = handicap / 2
+            
+            # Round strokes_given to whole number
+            strokes_given = int(round(strokes_given))
             
             # Calculate net score
             net_score = gross_score - strokes_given
