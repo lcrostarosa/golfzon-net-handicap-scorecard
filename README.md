@@ -32,20 +32,20 @@ A Python + Streamlit application that extracts player data from Golfzon-style go
 
 ## Screenshots
 
-### Submit Scores Page
-The main interface for uploading scorecard images and configuring scoring options.
+### Submit Scores
+Upload scorecard images via OCR, manual entry, or bulk entry. Configure week number, hole count, and submission method.
 
-![Submit Scores](screenshots/IMG_6889.png)
-
-### Scorecard Results
-After uploading a scorecard, the OCR extracts player data and displays results with calculated net scores and winner.
-
-![Scorecard Results](screenshots/IMG_9695.png)
+![Submit Scores](docs/screenshots/submit-scores.png)
 
 ### Team Management
 Create and manage teams within your league, assign players to teams, and view team rosters.
 
-![Team Management](screenshots/IMG_2870.png)
+![Team Management](docs/screenshots/team-management.png)
+
+### Leaderboard
+View weekly standings and cumulative rankings across all weeks, with team scores calculated from the top 2 net scores per team.
+
+![Leaderboard](docs/screenshots/leaderboard.png)
 
 ## Installation
 
